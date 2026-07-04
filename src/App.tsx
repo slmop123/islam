@@ -164,7 +164,7 @@ export default function App() {
           />
           <GlassCard
             title="محرك الاستنباط الشرعي العميق"
-            description="أنت تكفل به. استخرج الأحكام الشرعية، الفتاوى، والتفسيرات من أمهات الكتب بذكاء اصطناعي دقيق."
+            description="استخرج الأحكام الشرعية، الفتاوى، والتفسيرات من أمهات الكتب بذكاء اصطناعي دقيق."
             href="/engine.html"
             icon={Scale}
             isMain={true}

@@ -29,6 +29,10 @@ export default function Engine() {
   const resultCardRef = useRef<HTMLDivElement>(null);
 
   const handleLaunch = async () => {
+    if (!apiKey.trim()) {
+      setError('الرجاء إدخال مفتاح الذكاء الاصطناعي (Gemini API Key).');
+      return;
+    }
     if (!query.trim()) {
       setError('الرجاء إدخال سؤالك الشرعي.');
       return;
@@ -134,13 +138,25 @@ export default function Engine() {
           animate={{ opacity: 1, y: 0 }}
           className="w-full bg-white/5 backdrop-blur-2xl border border-white/10 rounded-3xl p-6 sm:p-8 shadow-[0_8px_32px_0_rgba(0,0,0,0.3)] flex flex-col gap-6 relative"
         >
-          <GlowingInput 
-            type="password" 
-            placeholder="اختياري: أدخل المفتاح هنا إذا أردت استخدام مفتاحك الخاص..."
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            label="مفتاح الذكاء الاصطناعي (Gemini API Key) - اختياري"
-          />
+          <div className="flex flex-col gap-1 w-full">
+            <GlowingInput 
+              type="password" 
+              placeholder="إجباري: أدخل المفتاح هنا..."
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              label="مفتاح الذكاء الاصطناعي (Gemini API Key) - إجباري"
+            />
+            <div className="text-right px-2 w-full font-arabic" dir="rtl">
+              <a 
+                href="https://aistudio.google.com/api-keys" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-violet-400 hover:text-violet-300 transition-colors text-xs underline"
+              >
+                احصل على مفتاح مجاني من هنا (aistudio.google.com/api-keys)
+              </a>
+            </div>
+          </div>
 
           <GlowingTextarea 
             placeholder="ابحث عن تفسير آية، صحة حديث، أو اطرح أي سؤال شرعي..."
