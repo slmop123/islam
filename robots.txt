@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://sitesec-islam.vercel.app/sitemap.xml
