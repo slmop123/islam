@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Database, Scale } from 'lucide-react';
+import { Home, Database, Scale, AlertTriangle, Settings } from 'lucide-react';
 
 export const Header: React.FC = () => {
   const location = useLocation();
@@ -9,6 +9,8 @@ export const Header: React.FC = () => {
     { name: 'الرئيسية', path: '/', icon: Home },
     { name: 'المعرض الشخصي', path: '/database.html', icon: Database },
     { name: 'محرك الاستنباط', path: '/engine.html', icon: Scale },
+    { name: 'إعدادات API', path: '/settings.html', icon: Settings },
+    { name: 'التبليغ عن خطأ', path: '/report.html', icon: AlertTriangle },
   ];
 
   return (

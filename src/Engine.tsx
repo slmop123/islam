@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Database, Rocket, Save, FileDown, CheckCircle, BrainCircuit, X, Sparkles, BookOpen } from 'lucide-react';
+import { ArrowRight, Database, Rocket, Save, FileDown, CheckCircle, BrainCircuit, X, Sparkles, BookOpen, AlertTriangle } from 'lucide-react';
 import { GoogleGenAI } from '@google/genai';
 import { FlyingLetters } from './components/FlyingLetters';
 import { GlowingInput } from './components/GlowingInput';
@@ -17,37 +17,47 @@ interface AIResponse {
 }
 
 export default function Engine() {
-  const [apiKey, setApiKey] = useState('');
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AIResponse | null>(null);
   const [error, setError] = useState('');
+  const [providerUsed, setProviderUsed] = useState('');
   const [quizModalOpen, setQuizModalOpen] = useState(false);
   const [quizUserAnswer, setQuizUserAnswer] = useState('');
   const [quizResult, setQuizResult] = useState<'idle' | 'success' | 'fail'>('idle');
+  const [showWarning, setShowWarning] = useState(true);
 
   const resultCardRef = useRef<HTMLDivElement>(null);
 
   const handleLaunch = async () => {
-    if (!apiKey.trim()) {
-      setError('الرجاء إدخال مفتاح الذكاء الاصطناعي (Gemini API Key).');
+    const googleKey = localStorage.getItem('GOOGLE_API_KEY') || '';
+    const openRouterKey = localStorage.getItem('OPENROUTER_API_KEY') || '';
+    const groqKey = localStorage.getItem('GROQ_API_KEY') || '';
+
+    if (!googleKey && !openRouterKey && !groqKey) {
+      setError('لم يتم العثور على أي مفتاح API. يرجى الذهاب إلى الإعدادات لإضافة مفتاح واحد على الأقل.');
       return;
     }
+
     if (!query.trim()) {
       setError('الرجاء إدخال سؤالك الشرعي.');
       return;
     }
+    
     setError('');
     setLoading(true);
     setResult(null);
+    setProviderUsed('');
 
     try {
-      const res = await fetch("/api/gemini", {
+      const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           query: query.trim(),
-          userApiKey: apiKey.trim() || undefined
+          googleKey,
+          openRouterKey,
+          groqKey
         })
       });
 
@@ -58,8 +68,20 @@ export default function Engine() {
       }
 
       if (data.text) {
-        const parsed = JSON.parse(data.text) as AIResponse;
+        let parsed;
+        try {
+          parsed = JSON.parse(data.text) as AIResponse;
+        } catch (e) {
+           // Attempt to extract JSON if markdown wrapping exists
+           const match = data.text.match(/```json\n([\s\S]*?)\n```/);
+           if (match) {
+             parsed = JSON.parse(match[1]) as AIResponse;
+           } else {
+             throw new Error("فشل في تحليل البيانات المستلمة. المخرجات ليست بتنسيق JSON صحيح.");
+           }
+        }
         setResult(parsed);
+        setProviderUsed(data.provider || '');
       } else {
         throw new Error("No response generated.");
       }
@@ -138,33 +160,26 @@ export default function Engine() {
           animate={{ opacity: 1, y: 0 }}
           className="w-full bg-white/5 backdrop-blur-2xl border border-white/10 rounded-3xl p-6 sm:p-8 shadow-[0_8px_32px_0_rgba(0,0,0,0.3)] flex flex-col gap-6 relative"
         >
-          <div className="flex flex-col gap-1 w-full">
-            <GlowingInput 
-              type="password" 
-              placeholder="إجباري: أدخل المفتاح هنا..."
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              label="مفتاح الذكاء الاصطناعي (Gemini API Key) - إجباري"
-            />
-            <div className="text-right px-2 w-full font-arabic" dir="rtl">
-              <a 
-                href="https://aistudio.google.com/api-keys" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-violet-400 hover:text-violet-300 transition-colors text-xs underline"
-              >
-                احصل على مفتاح مجاني من هنا (aistudio.google.com/api-keys)
-              </a>
-            </div>
-          </div>
-
           <GlowingTextarea 
             placeholder="ابحث عن تفسير آية، صحة حديث، أو اطرح أي سؤال شرعي..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
 
-          {error && <div className="text-red-400 font-arabic text-sm px-2">{error}</div>}
+          {error && (
+            <motion.div 
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              className="text-red-400 font-arabic text-sm px-4 py-3 bg-red-950/50 rounded-xl border border-red-900/50 flex flex-col gap-2"
+            >
+              <div>{error}</div>
+              {error.includes('مفتاح') && (
+                <Link to="/settings.html" className="text-white underline font-bold mt-1 inline-block">
+                  الذهاب إلى الإعدادات ⚙️
+                </Link>
+              )}
+            </motion.div>
+          )}
 
           <button 
             onClick={handleLaunch}
@@ -208,6 +223,12 @@ export default function Engine() {
               {/* Decorative glare */}
               <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-white/50 to-transparent"></div>
               
+              {providerUsed && (
+                <div className="absolute top-4 left-4 bg-white/10 text-white/60 text-xs px-3 py-1 rounded-full border border-white/10 flex items-center gap-2">
+                  تم التوليد بواسطة: <strong>{providerUsed}</strong>
+                </div>
+              )}
+              
               <div className="space-y-6">
                 <div>
                   <h4 className="text-violet-300 font-arabic font-bold text-xl mb-3 flex items-center gap-2">
@@ -235,21 +256,21 @@ export default function Engine() {
               <div className="flex flex-wrap gap-4 mt-4 pdf-hide border-t border-white/10 pt-8">
                 <button 
                   onClick={handleSaveToDatabase}
-                  className="flex-1 min-w-[200px] flex items-center justify-center gap-2 px-6 py-4 rounded-xl bg-white/10 hover:bg-white/20 text-white font-arabic font-bold border border-white/10 transition"
+                  className="flex-1 min-w-[150px] flex items-center justify-center gap-2 px-4 py-4 rounded-xl bg-white/10 hover:bg-white/20 text-white font-arabic font-bold border border-white/10 transition"
                 >
                   <Save size={20} />
                   حفظ في المعرض
                 </button>
                 <button 
                   onClick={handleExportPDF}
-                  className="flex-1 min-w-[200px] flex items-center justify-center gap-2 px-6 py-4 rounded-xl bg-white/10 hover:bg-white/20 text-white font-arabic font-bold border border-white/10 transition"
+                  className="flex-1 min-w-[150px] flex items-center justify-center gap-2 px-4 py-4 rounded-xl bg-white/10 hover:bg-white/20 text-white font-arabic font-bold border border-white/10 transition"
                 >
                   <FileDown size={20} />
                   تصدير PDF
                 </button>
                 <button 
                   onClick={() => setQuizModalOpen(true)}
-                  className="flex-1 min-w-[200px] flex items-center justify-center gap-2 px-6 py-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-arabic font-bold shadow-[0_0_20px_rgba(139,92,246,0.4)] transition"
+                  className="flex-1 min-w-[150px] flex items-center justify-center gap-2 px-4 py-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-arabic font-bold shadow-[0_0_20px_rgba(139,92,246,0.4)] transition"
                 >
                   <BrainCircuit size={20} />
                   اختبر فهمك
@@ -318,6 +339,53 @@ export default function Engine() {
                   </div>
                 </div>
               )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      {/* Warning Modal */}
+      <AnimatePresence>
+        {showWarning && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }} 
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="bg-slate-900 border border-red-500/50 p-8 rounded-3xl shadow-[0_0_50px_rgba(220,38,38,0.3)] z-10 w-full max-w-lg relative font-arabic text-center flex flex-col items-center"
+              dir="rtl"
+            >
+              <div className="w-20 h-20 bg-red-500/20 rounded-full flex items-center justify-center mb-6 animate-pulse">
+                <AlertTriangle className="text-red-500" size={40} />
+              </div>
+              
+              <h3 className="text-3xl font-black text-white mb-4">تنبيه هام!</h3>
+              
+              <p className="text-red-200 text-lg leading-relaxed mb-8">
+                قد يصدر عن محرك الذكاء الاصطناعي معلومات أو أحكام شرعية <strong>غير دقيقة أو خاطئة</strong>. 
+                يرجى دائماً مراجعة النتائج مع أهل العلم والمصادر الموثوقة وعدم الاعتماد الكلي عليها.
+              </p>
+              
+              <div className="flex flex-col sm:flex-row gap-4 w-full">
+                <button 
+                  onClick={() => setShowWarning(false)}
+                  className="flex-1 py-4 bg-red-600 hover:bg-red-500 rounded-xl text-white font-bold text-lg transition-colors shadow-lg"
+                >
+                  فهمت ذلك وأوافق
+                </button>
+                <Link 
+                  to="/report.html"
+                  onClick={() => setShowWarning(false)}
+                  className="flex-1 py-4 bg-white/10 hover:bg-white/20 rounded-xl text-white font-bold text-lg transition-colors shadow-lg border border-white/10"
+                >
+                  التبليغ عن خطأ
+                </Link>
+              </div>
             </motion.div>
           </div>
         )}

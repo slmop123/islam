@@ -155,13 +155,7 @@ export default function App() {
             icon={BookOpen}
             delay={0.3}
           />
-          <GlassCard
-            title="SiteSec Multi Poster"
-            description="ساهم في نشر الخير واعد نشره من خلال تحميل اي فيديو ديني بضغطة زر."
-            href="#"
-            icon={ExternalLink}
-            delay={0.4}
-          />
+
           <GlassCard
             title="محرك الاستنباط الشرعي العميق"
             description="استخرج الأحكام الشرعية، الفتاوى، والتفسيرات من أمهات الكتب بذكاء اصطناعي دقيق."

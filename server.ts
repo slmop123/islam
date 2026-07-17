@@ -13,23 +13,14 @@ async function startServer() {
   app.use(express.json());
 
   // API Routes
-  app.post("/api/gemini", async (req, res) => {
+  app.post("/api/generate", async (req, res) => {
     try {
-      const { query, userApiKey } = req.body;
+      const { query, googleKey, openRouterKey, groqKey } = req.body;
 
       if (!query) {
         return res.status(400).json({ error: "Query is required" });
       }
 
-      // Use the user's API key if provided, otherwise fallback to the server's key
-      const apiKey = userApiKey || process.env.GEMINI_API_KEY;
-
-      if (!apiKey) {
-        return res.status(401).json({ error: "No API key provided. Please provide one or configure the server environment." });
-      }
-
-      const ai = new GoogleGenAI({ apiKey: apiKey.trim() });
-      
       const systemPrompt = `You are an elite, hyper-accurate Islamic scholar AI. 
 Rule 1: Cross-verify everything across 3 major sources (e.g., Ibn Baz, Dorar Sunniyya, Al-Saadi) before answering. 
 Rule 2: State the exact sources in your answer. 
@@ -38,34 +29,103 @@ Rule 4: Return the response strictly as a JSON object with keys: { "explanation"
 Rule 5: ALL your output MUST be entirely in Arabic language.
 Respond purely in JSON format without markdown blocks.`;
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: query,
-        config: {
-          systemInstruction: systemPrompt,
-          responseMimeType: "application/json",
+      let lastError = null;
+
+      // 1. Try Google
+      const gKey = googleKey || process.env.GEMINI_API_KEY;
+      if (gKey) {
+        try {
+          const ai = new GoogleGenAI({ apiKey: gKey.trim() });
+          const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: query,
+            config: {
+              systemInstruction: systemPrompt,
+              responseMimeType: "application/json",
+            }
+          });
+          if (response.text) {
+            return res.status(200).json({ text: response.text, provider: "Google" });
+          }
+        } catch (err: any) {
+          console.error("Google API failed:", err.message);
+          lastError = "Google API Error: " + err.message;
         }
+      } else {
+        lastError = "No Google API key provided.";
+      }
+
+      // 2. Try OpenRouter
+      if (openRouterKey) {
+        try {
+          const fetchRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${openRouterKey.trim()}`,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              model: "google/gemini-2.5-flash", // Using a fast model or fallback to any fast model like llama-3
+              messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: query }
+              ],
+              response_format: { type: "json_object" }
+            })
+          });
+          const data = await fetchRes.json();
+          if (fetchRes.ok && data.choices && data.choices.length > 0) {
+            return res.status(200).json({ text: data.choices[0].message.content, provider: "OpenRouter" });
+          } else {
+            console.error("OpenRouter API failed:", data.error || data);
+            lastError = "OpenRouter API Error: " + (data.error?.message || "Unknown error");
+          }
+        } catch (err: any) {
+          console.error("OpenRouter fetch failed:", err.message);
+          lastError = "OpenRouter Request Failed: " + err.message;
+        }
+      }
+
+      // 3. Try Groq
+      if (groqKey) {
+        try {
+          const fetchRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${groqKey.trim()}`,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              model: "llama3-70b-8192", // Fast model on Groq
+              messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: query }
+              ],
+              response_format: { type: "json_object" }
+            })
+          });
+          const data = await fetchRes.json();
+          if (fetchRes.ok && data.choices && data.choices.length > 0) {
+            return res.status(200).json({ text: data.choices[0].message.content, provider: "Groq" });
+          } else {
+            console.error("Groq API failed:", data.error || data);
+            lastError = "Groq API Error: " + (data.error?.message || "Unknown error");
+          }
+        } catch (err: any) {
+          console.error("Groq fetch failed:", err.message);
+          lastError = "Groq Request Failed: " + err.message;
+        }
+      }
+
+      // If we got here, all attempts failed
+      return res.status(500).json({ 
+        error: "فشلت جميع محاولات الاتصال بالذكاء الاصطناعي. يرجى مراجعة إعدادات API والتأكد من صحة المفاتيح.",
+        details: lastError
       });
 
-      if (response.text) {
-        // Just forward the raw JSON response
-        res.status(200).json({ text: response.text });
-      } else {
-        res.status(500).json({ error: "No response generated." });
-      }
-
     } catch (error: any) {
-      console.error("Gemini API Error:", error);
-      // Determine if it's a 403 or other known error
-      let status = 500;
-      let message = error.message || "حدث خطأ أثناء الاتصال بالمحرك.";
-      
-      if (error.status === 403 || message.includes("PERMISSION_DENIED") || message.includes("403")) {
-        status = 403;
-        message = "مفتاح API غير صالح أو لا يملك صلاحية. تأكد من صحة المفتاح.";
-      }
-
-      res.status(status).json({ error: message });
+      console.error("Generate Route Error:", error);
+      res.status(500).json({ error: "حدث خطأ غير متوقع." });
     }
   });
 
