@@ -6,6 +6,7 @@ import Engine from './Engine.tsx';
 import Database from './Database.tsx';
 import Report from './Report.tsx';
 import Settings from './Settings.tsx';
+import TafsirPage from './Tafsir.tsx';
 import { Layout } from './components/Layout.tsx';
 import './index.css';
 
@@ -15,6 +16,7 @@ createRoot(document.getElementById('root')!).render(
       <Layout>
         <Routes>
           <Route path="/" element={<App />} />
+          <Route path="/tafsir.html" element={<TafsirPage />} />
           <Route path="/engine.html" element={<Engine />} />
           <Route path="/database.html" element={<Database />} />
           <Route path="/report.html" element={<Report />} />

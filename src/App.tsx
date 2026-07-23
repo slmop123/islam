@@ -135,25 +135,12 @@ export default function App() {
         {/* Portals Grid */}
         <div className="w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-[300px]">
           <GlassCard
-            title="محرك القوانين الكونية"
-            description="يحول مشاكلك وحلولها الى معادلات بناء على القران والسنة لتطبيقها في حياتك اليومية."
-            href="#"
-            icon={Compass}
-            delay={0.1}
-          />
-          <GlassCard
-            title="رادار الوقت الميت"
-            description="حول صفحات الانترنت واوقات الانتظار الى منجم من الحسنات وكنز لا يفنى."
-            href="#"
-            icon={Layers}
-            delay={0.2}
-          />
-          <GlassCard
-            title="محرك هندسة النعيم"
-            description="خطط لماذا ستصنع في الجنة، وابنِ قصورك وأنهارَك من الآن."
-            href="#"
+            title="SiteSec Tafsir (الماستر)"
+            description="المنصة الأساسية لختم تفسير القرآن الكريم كاملاً عبر 17 آية يومياً باختبارات تفاعلية ميسرة."
+            href="/tafsir.html"
             icon={BookOpen}
-            delay={0.3}
+            isMain={true}
+            delay={0.1}
           />
 
           <GlassCard
@@ -162,6 +149,30 @@ export default function App() {
             href="/engine.html"
             icon={Scale}
             isMain={true}
+            delay={0.2}
+          />
+
+          <GlassCard
+            title="محرك القوانين الكونية"
+            description="يحول مشاكلك وحلولها الى معادلات بناء على القران والسنة لتطبيقها في حياتك اليومية."
+            href="#"
+            icon={Compass}
+            delay={0.3}
+          />
+
+          <GlassCard
+            title="رادار الوقت الميت"
+            description="حول صفحات الانترنت واوقات الانتظار الى منجم من الحسنات وكنز لا يفنى."
+            href="#"
+            icon={Layers}
+            delay={0.4}
+          />
+
+          <GlassCard
+            title="محرك هندسة النعيم"
+            description="خطط لماذا ستصنع في الجنة، وابنِ قصورك وأنهارَك من الآن."
+            href="#"
+            icon={BookOpen}
             delay={0.5}
           />
         </div>
