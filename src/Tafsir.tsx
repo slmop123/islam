@@ -15,13 +15,17 @@ import {
   BookMarked,
   HelpCircle,
   Zap,
-  Info
+  Info,
+  Server,
+  RefreshCw
 } from 'lucide-react';
 import { 
   VerseTafsir, 
+  QuizData,
   TOTAL_QURAN_VERSES, 
   DAILY_GOAL_VERSES, 
-  fetchVerseTafsir 
+  fetchVerseTafsir,
+  generateQuizWithCascade
 } from './data/quranTafsirData';
 
 // Helper function to calculate today and tomorrow date strings
@@ -82,13 +86,18 @@ export default function TafsirPage() {
   const [currentVerse, setCurrentVerse] = useState<VerseTafsir | null>(null);
   const [loadingVerse, setLoadingVerse] = useState<boolean>(false);
 
-  // Stage of current verse learning: 'card' | 'timer' | 'quiz' | 'result_success' | 'result_fail'
-  const [verseStage, setVerseStage] = useState<'card' | 'timer' | 'quiz' | 'result_success' | 'result_fail'>('card');
+  // Dynamic Quiz State
+  const [currentQuiz, setCurrentQuiz] = useState<QuizData | null>(null);
+  const [quizGeneratingStatus, setQuizGeneratingStatus] = useState<string>('');
+  const [quizGenerationError, setQuizGenerationError] = useState<string | null>(null);
+
+  // Stage of current verse learning: 'card' | 'timer' | 'quiz_generating' | 'quiz' | 'server_error' | 'result_success' | 'result_fail'
+  const [verseStage, setVerseStage] = useState<'card' | 'timer' | 'quiz_generating' | 'quiz' | 'server_error' | 'result_success' | 'result_fail'>('card');
   
   // Timer State (15 seconds countdown)
   const [timerSeconds, setTimerSeconds] = useState<number>(15);
   
-  // Quiz State
+  // Quiz Selection State
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [todayCompletedCount, setTodayCompletedCount] = useState<number>(0);
   const [showGoalModal, setShowGoalModal] = useState<boolean>(false);
@@ -98,6 +107,7 @@ export default function TafsirPage() {
     let isMounted = true;
     const loadVerse = async () => {
       setLoadingVerse(true);
+      setCurrentQuiz(null);
       const verseData = await fetchVerseTafsir(currentVerseIndex);
       if (isMounted) {
         setCurrentVerse(verseData);
@@ -141,6 +151,30 @@ export default function TafsirPage() {
     localStorage.setItem('sitesec_tafsir_current_idx', currentVerseIndex.toString());
   }, [completedVerseIds, currentVerseIndex]);
 
+  // Dynamic Quiz Generation Trigger Function
+  const triggerQuizGeneration = async () => {
+    if (!currentVerse) return;
+    setVerseStage('quiz_generating');
+    setQuizGeneratingStatus('جاري الاتصال بخادم Gemini (Google AI) لإنشاء سؤال الاختبار...');
+    setQuizGenerationError(null);
+
+    const res = await generateQuizWithCascade(
+      currentVerse.arabicText,
+      currentVerse.tafsir,
+      currentVerse.surahName,
+      currentVerse.verseNumber,
+      (statusMsg) => setQuizGeneratingStatus(statusMsg)
+    );
+
+    if (res.success && res.quiz) {
+      setCurrentQuiz(res.quiz);
+      setVerseStage('quiz');
+    } else {
+      setQuizGenerationError(res.error || "تعذر الاتصال بجميع خوادم الذكاء الاصطناعي لإنشاء سؤال الاختبار بعد 3 محاولات.");
+      setVerseStage('server_error');
+    }
+  };
+
   // 15-second Timer Effect during 'timer' stage
   useEffect(() => {
     let interval: any = null;
@@ -149,7 +183,7 @@ export default function TafsirPage() {
         setTimerSeconds(prev => prev - 1);
       }, 1000);
     } else if (verseStage === 'timer' && timerSeconds === 0) {
-      setVerseStage('quiz');
+      triggerQuizGeneration();
     }
     return () => clearInterval(interval);
   }, [verseStage, timerSeconds]);
@@ -163,6 +197,7 @@ export default function TafsirPage() {
     setJourneyStarted(true);
     setVerseStage('card');
     setTodayCompletedCount(0);
+    setCurrentQuiz(null);
   };
 
   const handleStartQuiz = () => {
@@ -171,40 +206,49 @@ export default function TafsirPage() {
   };
 
   const handleSkipTimer = () => {
-    setVerseStage('quiz');
+    triggerQuizGeneration();
+  };
+
+  const markVerseCompleted = () => {
+    if (!currentVerse) return;
+    if (!completedVerseIds.includes(currentVerse.id)) {
+      setCompletedVerseIds(prev => [...prev, currentVerse.id]);
+    }
+    
+    const newTodayCount = todayCompletedCount + 1;
+    setTodayCompletedCount(newTodayCount);
+
+    if (newTodayCount >= DAILY_GOAL_VERSES) {
+      const dateInfo = getTodayDateInfo();
+      setLastCompletedDateKey(dateInfo.key);
+      setLastCompletedArabic(dateInfo.formattedToday);
+      setNextUnlockedArabic(dateInfo.formattedTomorrow);
+
+      localStorage.setItem('sitesec_tafsir_last_completed_date', dateInfo.key);
+      localStorage.setItem('sitesec_tafsir_last_completed_arabic', dateInfo.formattedToday);
+      localStorage.setItem('sitesec_tafsir_next_unlocked_arabic', dateInfo.formattedTomorrow);
+
+      setShowGoalModal(true);
+    }
   };
 
   const handleOptionSubmit = (optionIndex: number) => {
     if (!currentVerse) return;
     setSelectedOption(optionIndex);
 
-    if (optionIndex === currentVerse.correctOptionIndex) {
+    const correctIdx = currentQuiz ? currentQuiz.correctOptionIndex : currentVerse.correctOptionIndex;
+
+    if (optionIndex === correctIdx) {
       setVerseStage('result_success');
-      
-      // Mark verse as completed if not already
-      if (!completedVerseIds.includes(currentVerse.id)) {
-        setCompletedVerseIds(prev => [...prev, currentVerse.id]);
-      }
-      
-      const newTodayCount = todayCompletedCount + 1;
-      setTodayCompletedCount(newTodayCount);
-
-      if (newTodayCount >= DAILY_GOAL_VERSES) {
-        // Record completion date lock
-        const dateInfo = getTodayDateInfo();
-        setLastCompletedDateKey(dateInfo.key);
-        setLastCompletedArabic(dateInfo.formattedToday);
-        setNextUnlockedArabic(dateInfo.formattedTomorrow);
-
-        localStorage.setItem('sitesec_tafsir_last_completed_date', dateInfo.key);
-        localStorage.setItem('sitesec_tafsir_last_completed_arabic', dateInfo.formattedToday);
-        localStorage.setItem('sitesec_tafsir_next_unlocked_arabic', dateInfo.formattedTomorrow);
-
-        setShowGoalModal(true);
-      }
+      markVerseCompleted();
     } else {
       setVerseStage('result_fail');
     }
+  };
+
+  const handleBypassQuizDueToServerIssue = () => {
+    setVerseStage('result_success');
+    markVerseCompleted();
   };
 
   const handleNextVerse = () => {
@@ -212,6 +256,7 @@ export default function TafsirPage() {
       setCurrentVerseIndex(prev => prev + 1);
       setVerseStage('card');
       setSelectedOption(null);
+      setCurrentQuiz(null);
     }
   };
 
@@ -617,7 +662,105 @@ export default function TafsirPage() {
               </motion.div>
             )}
 
-            {/* STAGE 3: Quiz Question Screen */}
+            {/* STAGE 3: Generating Quiz via AI Loading Screen */}
+            {verseStage === 'quiz_generating' && (
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="w-full bg-gradient-to-br from-slate-900/95 via-violet-950/60 to-slate-900/95 backdrop-blur-2xl border border-violet-500/40 rounded-3xl p-8 sm:p-14 text-center flex flex-col items-center justify-center gap-6 shadow-[0_0_60px_rgba(139,92,246,0.25)] relative overflow-hidden"
+              >
+                <div className="relative flex items-center justify-center mb-2">
+                  <div className="w-24 h-24 rounded-3xl bg-violet-600/20 border border-violet-500/40 flex items-center justify-center text-amber-300 shadow-2xl relative animate-pulse">
+                    <Sparkles size={48} className="animate-spin text-amber-300" style={{ animationDuration: '4s' }} />
+                  </div>
+                  <div className="absolute -inset-4 rounded-full border-2 border-amber-400/30 border-t-amber-400 animate-spin"></div>
+                </div>
+
+                <div className="space-y-3 max-w-xl">
+                  <span className="bg-amber-500/20 text-amber-300 text-xs font-bold px-4 py-1.5 rounded-full border border-amber-500/30 inline-flex items-center gap-1.5">
+                    <Zap size={14} /> جاري صياغة سؤال جديد ومخصص للآية
+                  </span>
+                  <h3 className="text-2xl sm:text-3xl font-black text-white">
+                    الذكاء الاصطناعي يقوم بصياغة سؤال الاختبار التفاعلي...
+                  </h3>
+                  
+                  <div className="bg-black/40 p-4 rounded-2xl border border-white/10 text-amber-200 text-sm sm:text-base font-bold flex items-center justify-center gap-2">
+                    <RefreshCw size={18} className="animate-spin text-amber-400" />
+                    <span>{quizGeneratingStatus}</span>
+                  </div>
+                </div>
+
+                <p className="text-blue-200/80 text-xs sm:text-sm max-w-lg leading-relaxed bg-white/5 p-4 rounded-xl border border-white/5">
+                  تتم الاستجابة أولاً بواسطة Gemini، وعند حدوث بطء يتم انتظار 5 ثوانٍ والتجربة التلقائية على Groq ثم OpenRouter بتكرار يصل لـ 3 محاولات لضمان أفضل سؤال.
+                </p>
+              </motion.div>
+            )}
+
+            {/* STAGE 3.5: Server Error & Bypass Screen */}
+            {verseStage === 'server_error' && (
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="w-full bg-gradient-to-br from-slate-900/95 via-amber-950/40 to-red-950/60 backdrop-blur-2xl border border-amber-500/50 rounded-3xl p-6 sm:p-10 shadow-[0_0_50px_rgba(245,158,11,0.2)] flex flex-col items-center text-center gap-6 relative"
+              >
+                <div className="w-20 h-20 rounded-2xl bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-amber-400 shadow-2xl animate-bounce">
+                  <AlertTriangle size={42} />
+                </div>
+
+                <div className="space-y-2 max-w-2xl">
+                  <div className="inline-flex items-center gap-2 bg-amber-500/20 text-amber-300 text-xs font-bold px-4 py-1.5 rounded-full border border-amber-500/30">
+                    <Server size={14} /> تعذر الاتصال بخوادم التوليد
+                  </div>
+
+                  <h3 className="text-2xl sm:text-3xl font-black text-white">
+                    تنبيه: الخوادم غير مستجيبة حالياً ⚠️
+                  </h3>
+
+                  <p className="text-blue-100 text-base leading-relaxed bg-black/40 p-5 rounded-2xl border border-white/10">
+                    تمت المحاولة 3 مرات متكررة للاتصال بخوادم الذكاء الاصطناعي (Gemini / Groq / OpenRouter) مع مهلة 5 ثوانٍ في كل تجربة، ولم تنجح الاستجابة بسبب خلل في الخوادم. 
+                    <br /><strong className="text-amber-300">يرجى إعادة مراجعة الآية وتفسيرها ذاتياً لترسيخ المعنى.</strong>
+                  </p>
+                </div>
+
+                {/* Special Bypass Permission Box */}
+                <div className="bg-emerald-950/60 border border-emerald-500/40 p-5 rounded-2xl max-w-2xl text-emerald-200 text-sm font-bold space-y-1">
+                  <div className="flex items-center justify-center gap-2 text-emerald-300 text-base">
+                    <CheckCircle2 size={18} /> تفعيل التجاوز الاستثنائي (وضع الخوادم)
+                  </div>
+                  <p>
+                    نظراً لأن المشكلة خارجة عن إرادتك ومن خوادم الخدمة، يُسمح لك بالعبور وتجاوز الاختبار واحتساب الآية كمكتملة بنجاح كي لا تتوقف رحلتك اليومية.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-center gap-4 mt-2">
+                  <button 
+                    onClick={handleBypassQuizDueToServerIssue}
+                    className="px-8 py-4 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 font-black text-base sm:text-lg rounded-2xl shadow-[0_0_25px_rgba(16,185,129,0.4)] transition-all transform hover:scale-105 flex items-center gap-2"
+                  >
+                    <CheckCircle2 size={20} />
+                    تجاوز الاختبار واحتساب الآية (بسبب خلل الخوادم) ✅
+                  </button>
+
+                  <button 
+                    onClick={triggerQuizGeneration}
+                    className="px-6 py-4 bg-white/10 hover:bg-white/20 text-amber-300 font-bold text-sm rounded-2xl border border-amber-500/30 transition-all flex items-center gap-2"
+                  >
+                    <RefreshCw size={16} />
+                    إعادة محاولة الاتصال بالخوادم
+                  </button>
+
+                  <button 
+                    onClick={handleRetryVerse}
+                    className="px-6 py-4 bg-white/5 hover:bg-white/10 text-white/80 font-bold text-sm rounded-2xl border border-white/10 transition-all flex items-center gap-2"
+                  >
+                    <BookOpen size={16} />
+                    العودة لبطاقة التفسير
+                  </button>
+                </div>
+              </motion.div>
+            )}
+
+            {/* STAGE 4: Quiz Question Screen */}
             {currentVerse && verseStage === 'quiz' && (
               <motion.div 
                 initial={{ opacity: 0, y: 20 }}
@@ -628,15 +771,20 @@ export default function TafsirPage() {
                   <span className="text-amber-400 font-bold text-sm flex items-center gap-2">
                     <HelpCircle size={18} /> سؤال الفهم والاستيعاب للآية {currentVerse.verseNumber} ({currentVerse.surahName})
                   </span>
-                  <span className="text-xs text-white/50">اختر الإجابة الصحيحة</span>
+                  
+                  {currentQuiz?.providerUsed && (
+                    <span className="text-xs text-violet-300 font-bold bg-violet-600/20 px-3 py-1 rounded-full border border-violet-500/30">
+                      بواسطة: {currentQuiz.providerUsed}
+                    </span>
+                  )}
                 </div>
 
                 <h3 className="text-2xl font-black text-white leading-relaxed bg-black/30 p-6 rounded-2xl border border-white/5">
-                  {currentVerse.quizQuestion}
+                  {currentQuiz ? currentQuiz.quizQuestion : currentVerse.quizQuestion}
                 </h3>
 
                 <div className="grid grid-cols-1 gap-4 mt-2">
-                  {currentVerse.quizOptions.map((option, idx) => (
+                  {(currentQuiz ? currentQuiz.quizOptions : currentVerse.quizOptions).map((option, idx) => (
                     <button 
                       key={idx}
                       onClick={() => handleOptionSubmit(idx)}
@@ -652,7 +800,7 @@ export default function TafsirPage() {
               </motion.div>
             )}
 
-            {/* STAGE 4: Success Result */}
+            {/* STAGE 5: Success Result */}
             {currentVerse && verseStage === 'result_success' && (
               <motion.div 
                 initial={{ opacity: 0, scale: 0.95 }}
@@ -666,7 +814,7 @@ export default function TafsirPage() {
                 <div className="space-y-2">
                   <h3 className="text-3xl font-black text-white">إجابة صحيحة! ممتازة جداً 🎉</h3>
                   <p className="text-emerald-200 text-lg max-w-lg">
-                    {currentVerse.quizExplanation}
+                    {currentQuiz ? currentQuiz.quizExplanation : currentVerse.quizExplanation}
                   </p>
                 </div>
 
