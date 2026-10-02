@@ -3,9 +3,11 @@ export interface VerseTafsir {
   surahName: string;
   surahNumber: number;
   verseNumber: number;
+  page?: number; // Page in Madinah Mushaf (1 to 604)
   arabicText: string;
   tafsir: string;
   realLifeExample: string;
+  tafsirEvidence?: string; // الدليل من التفسير الميسر المعتمد
   sources: string;
   quizQuestion: string;
   quizOptions: string[];
@@ -22,7 +24,10 @@ export interface QuizData {
 }
 
 export const TOTAL_QURAN_VERSES = 6236;
+export const TOTAL_MADINAH_PAGES = 604;
 export const DAILY_GOAL_VERSES = 17;
+export const DAILY_GOAL_PAGES = 2; // صفحتان يومياً بحساب مصحف المدينة
+export const VERSES_PER_TWO_PAGES_AVG = 10; // معدل الآيات في صفحتين (أسرع وأسهل)
 
 /**
  * Generates an interactive quiz question on-demand using Gemini -> Groq -> OpenRouter 
@@ -206,7 +211,8 @@ export async function fetchVerseTafsir(verseIndex: number): Promise<VerseTafsir>
     const verseNumber = uthmaniData.data.numberInSurah;
 
     // Step 2: Use Gemini API to generate practical example & MCQ quiz
-    let realLifeExample = `عند قراءة قوله تعالى ﴿${verseText}﴾، يستشعر المسلم عظمة التوجيه الإلهي ويسعى لتطبيق هدى هذه الآية المباركة في تعاملاته اليومية ونيته الصالحة.`;
+    let realLifeExample = `عند قراءة قوله تعالى ﴿${verseText}﴾، يستشعر المسلم عظمة التوجيه الإلهي ويسعى لتطبيق هدى هذه الآية المباركة في تعاملاته ونيته الصالحة. هذا الوعي يدفعه لملازمة التقوى وإصلاح العمل في كل شؤون حياته.`;
+    let tafsirEvidence = `الدليل من نص التفسير الميسر المذكور: قوله "${tafsirText.slice(0, 140)}..." وهو الشاهد المباشر الذي يدل بدقة على وجوب العمل بهذا التوجيه في حياة المسلم.`;
     let quizQuestion = `ما هو المعنى والمقصد الأساسي الموضح في التفسير الميسر للآية الكريمة (سورة ${surahName} - آية ${verseNumber})؟`;
     let quizOptions = [
       `الامتثال للتوجيه الإلهي وتدبر التفسير الميسر المذكور`,
@@ -226,13 +232,15 @@ export async function fetchVerseTafsir(verseIndex: number): Promise<VerseTafsir>
 السورة: ${surahName} - رقم الآية: ${verseNumber}
 التفسير الميسر المعتمد: ${tafsirText}
 
-بناءً على الآية والتفسير أعلاه، قم بإعداد:
-1) تطبيق عملي ومثال تربوي واقعي يربط هدى الآية بحياة المسلم اليومية والمعاصرة (في فقرة ملهمة ومختصرة).
-2) سؤال اختباري تفاعلي لقياس الفهم والاستيعاب مع 4 خيارات، وتحديد رقم الخيار الصحيح (من 0 إلى 3)، مع شرح مختصر لسبب صحة الخيار.
+المطلوب بدقة وإتقان:
+1) تطبيق عملي ومثال من الواقع يربط هدى الآية بحياة المسلم وسلوكه اليومي، بشرط صارم أن يكون في جملتين أو ثلاث جمل كحد أقصى (لا تزد عن 3 جمل إطلاقاً).
+2) استخراج "الدليل على صحة ذلك من التفسير": استخرج واقتبس الشاهد والعبارة الدقيقة من نص التفسير الميسر المكتوب أمامك أعلاه فقط (وليس من أي مصدر أو كتاب خارجي آخر)، مع بيان وجيز لكيفية دلالة عبارة التفسير على صحة هذا المثال الواقعي.
+3) سؤال اختباري تفاعلي لقياس الفهم والاستيعاب مع 4 خيارات، وتحديد رقم الخيار الصحيح (من 0 إلى 3)، مع شرح مختصر لسبب صحة الخيار.
 
-أرجع النتيجة حصراً بصيغة JSON بدون أي كلام خارجي كالتالي:
+أرجع النتيجة حصراً بصيغة JSON خالية من أي علامات أو نصوص إضافية كالتالي:
 {
-  "realLifeExample": "...",
+  "realLifeExample": "مثال عملي مركز في جملتين أو 3 جمل كحد أقصى...",
+  "tafsirEvidence": "الدليل من التفسير الميسر: الشاهد المباشر من عبارات التفسير أعلاه هو قوله [...] وهذا يثبت صحة التطبيق الواقعي...",
   "quizQuestion": "...",
   "quizOptions": ["خيار 1", "خيار 2", "خيار 3", "خيار 4"],
   "correctOptionIndex": 0,
@@ -258,6 +266,7 @@ export async function fetchVerseTafsir(verseIndex: number): Promise<VerseTafsir>
 
           if (parsedAI) {
             if (parsedAI.realLifeExample) realLifeExample = parsedAI.realLifeExample;
+            if (parsedAI.tafsirEvidence) tafsirEvidence = parsedAI.tafsirEvidence;
             if (parsedAI.quizQuestion) quizQuestion = parsedAI.quizQuestion;
             if (Array.isArray(parsedAI.quizOptions) && parsedAI.quizOptions.length === 4) {
               quizOptions = parsedAI.quizOptions;
@@ -278,9 +287,11 @@ export async function fetchVerseTafsir(verseIndex: number): Promise<VerseTafsir>
       surahName,
       surahNumber,
       verseNumber,
+      page: uthmaniData?.data?.page || Math.min(604, Math.max(1, Math.ceil(safeIndex / 10.3))),
       arabicText: verseText,
       tafsir: tafsirText,
       realLifeExample,
+      tafsirEvidence,
       sources: "التفسير الميسر (مجمع الملك فهد لطباعة المصحف الشريف) - Alquran Cloud",
       quizQuestion,
       quizOptions,
@@ -308,7 +319,8 @@ export async function fetchVerseTafsir(verseIndex: number): Promise<VerseTafsir>
       verseNumber: safeIndex,
       arabicText: `آية رقم ${safeIndex} من كتاب الله العزيز`,
       tafsir: "تأمل وتفسير ميسر للآية الكريمة، تدعو إلى الإيمان والتقوى والتفكر في آيات الله العزيز الحكيم.",
-      realLifeExample: "تطبيق هدى الآية العظيم في الحياة اليومية والمعاملات الأخلاقية العالية.",
+      realLifeExample: "تطبيق هدى الآية العظيم في الحياة اليومية والمعاملات الأخلاقية العالية في جملتين مركزتين.",
+      tafsirEvidence: "الدليل من التفسير الميسر المذكور: دلالة التفسير الصريحة على ترسيخ الإيمان والعمل الصالح والتزام أمر الله.",
       sources: "التفسير الميسر - Alquran Cloud",
       quizQuestion: `ما الغاية الأساسية المستفادة من الآية الكريمة رقم ${safeIndex}؟`,
       quizOptions: [

@@ -1,15 +1,28 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Database, Scale, AlertTriangle, Settings, BookOpen } from 'lucide-react';
+import { Home, BookMarked, AlertTriangle, Settings, BookOpen } from 'lucide-react';
+import { getSavedTafsirs } from '../data/savedTafsirStorage';
 
 export const Header: React.FC = () => {
   const location = useLocation();
+  const [savedCount, setSavedCount] = useState<number>(() => getSavedTafsirs().length);
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      setSavedCount(getSavedTafsirs().length);
+    };
+    window.addEventListener('sitesec_saved_tafsirs_updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+    return () => {
+      window.removeEventListener('sitesec_saved_tafsirs_updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
+  }, []);
 
   const navItems = [
     { name: 'الرئيسية', path: '/', icon: Home },
-    { name: 'SiteSec Tafsir', path: '/tafsir.html', icon: BookOpen },
-    { name: 'محرك الاستنباط', path: '/engine.html', icon: Scale },
-    { name: 'المعرض الشخصي', path: '/database.html', icon: Database },
+    { name: 'Shaheen Tafsir', path: '/tafsir.html', icon: BookOpen },
+    { name: 'المعرض الشخصي', path: '/database.html', icon: BookMarked, badge: savedCount > 0 ? savedCount : null },
     { name: 'إعدادات API', path: '/settings.html', icon: Settings },
     { name: 'التبليغ عن خطأ', path: '/report.html', icon: AlertTriangle },
   ];
@@ -38,9 +51,9 @@ export const Header: React.FC = () => {
         </div>
         <div>
           <h1 className="text-3xl sm:text-4xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white to-blue-200 drop-shadow-2xl font-sans" dir="ltr">
-            SiteSec Islam
+            Shaheen Islam
           </h1>
-          <p className="text-blue-200/80 font-arabic text-sm mt-1">المنصة الذكية للاستنباط والبحث</p>
+          <p className="text-blue-200/80 font-arabic text-sm mt-1">المنصة الذكية للاستنباط والتدبر القرآني</p>
         </div>
       </div>
 
@@ -60,7 +73,12 @@ export const Header: React.FC = () => {
               }`}
             >
               <Icon size={18} />
-              {item.name}
+              <span>{item.name}</span>
+              {item.badge !== undefined && item.badge !== null && (
+                <span className="mr-1.5 px-2 py-0.5 text-xs font-mono font-bold bg-amber-500/80 text-black rounded-full shadow-sm">
+                  {item.badge}
+                </span>
+              )}
             </Link>
           );
         })}

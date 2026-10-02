@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { 
   BookOpen, 
   Sparkles, 
@@ -17,16 +17,38 @@ import {
   Zap,
   Info,
   Server,
-  RefreshCw
+  RefreshCw,
+  List,
+  Search,
+  Grid,
+  ChevronDown,
+  X,
+  ArrowRight,
+  Hash,
+  Bookmark
 } from 'lucide-react';
 import { 
   VerseTafsir, 
   QuizData,
   TOTAL_QURAN_VERSES, 
+  TOTAL_MADINAH_PAGES,
   DAILY_GOAL_VERSES, 
+  DAILY_GOAL_PAGES,
+  VERSES_PER_TWO_PAGES_AVG,
   fetchVerseTafsir,
   generateQuizWithCascade
 } from './data/quranTafsirData';
+import { 
+  QURAN_SURAHS, 
+  SurahMeta, 
+  getGlobalVerseId, 
+  getSurahAndVerseByGlobalId 
+} from './data/quranSurahsData';
+import {
+  isVerseSaved,
+  saveTafsir,
+  removeSavedTafsir
+} from './data/savedTafsirStorage';
 
 // Helper function to calculate today and tomorrow date strings
 function getTodayDateInfo() {
@@ -93,6 +115,13 @@ export default function TafsirPage() {
 
   // Stage of current verse learning: 'card' | 'timer' | 'quiz_generating' | 'quiz' | 'server_error' | 'result_success' | 'result_fail'
   const [verseStage, setVerseStage] = useState<'card' | 'timer' | 'quiz_generating' | 'quiz' | 'server_error' | 'result_success' | 'result_fail'>('card');
+
+  // Quran Surahs & Verse Index Modal State
+  const [showQuranIndexModal, setShowQuranIndexModal] = useState<boolean>(false);
+  const [selectedSurahForPicker, setSelectedSurahForPicker] = useState<SurahMeta | null>(null);
+  const [surahSearchQuery, setSurahSearchQuery] = useState<string>('');
+  const [surahTypeFilter, setSurahTypeFilter] = useState<'all' | 'مكية' | 'مدنية'>('all');
+  const [jumpVerseInput, setJumpVerseInput] = useState<string>('');
   
   // Timer State (15 seconds countdown)
   const [timerSeconds, setTimerSeconds] = useState<number>(15);
@@ -101,6 +130,90 @@ export default function TafsirPage() {
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [todayCompletedCount, setTodayCompletedCount] = useState<number>(0);
   const [showGoalModal, setShowGoalModal] = useState<boolean>(false);
+
+  // Goal Mode: 'verses' (17 verses) vs 'pages' (2 pages of Madinah Mushaf - faster and easier)
+  const [goalMode, setGoalMode] = useState<'verses' | 'pages'>(() => {
+    return (localStorage.getItem('shaheen_tafsir_goal_mode') as 'verses' | 'pages') || 'verses';
+  });
+
+  useEffect(() => {
+    const handleGoalModeUpdate = () => {
+      const savedMode = (localStorage.getItem('shaheen_tafsir_goal_mode') as 'verses' | 'pages') || 'verses';
+      setGoalMode(savedMode);
+    };
+    window.addEventListener('shaheen_goal_mode_changed', handleGoalModeUpdate);
+    window.addEventListener('storage', handleGoalModeUpdate);
+    return () => {
+      window.removeEventListener('shaheen_goal_mode_changed', handleGoalModeUpdate);
+      window.removeEventListener('storage', handleGoalModeUpdate);
+    };
+  }, []);
+
+  const dailyTargetCount = goalMode === 'verses' ? DAILY_GOAL_VERSES : VERSES_PER_TWO_PAGES_AVG;
+
+  const handleSelectGoalMode = (mode: 'verses' | 'pages') => {
+    setGoalMode(mode);
+    localStorage.setItem('shaheen_tafsir_goal_mode', mode);
+    window.dispatchEvent(new Event('shaheen_goal_mode_changed'));
+  };
+
+  // Personal Gallery Save State
+  const [searchParams] = useSearchParams();
+  const [isSavedInGallery, setIsSavedInGallery] = useState<boolean>(false);
+  const [saveToastMessage, setSaveToastMessage] = useState<string | null>(null);
+
+  // Evidence from Tafsir toggle
+  const [showTafsirEvidence, setShowTafsirEvidence] = useState<boolean>(false);
+
+  // Sync saved status whenever currentVerse changes
+  useEffect(() => {
+    if (currentVerse) {
+      setIsSavedInGallery(isVerseSaved(currentVerse.id));
+    }
+    setShowTafsirEvidence(false);
+  }, [currentVerse]);
+
+  // Handle URL query parameter ?verse=123 (e.g. navigation from Personal Gallery)
+  useEffect(() => {
+    const verseParam = searchParams.get('verse');
+    if (verseParam) {
+      const parsed = parseInt(verseParam, 10);
+      if (!isNaN(parsed) && parsed >= 1 && parsed <= TOTAL_QURAN_VERSES) {
+        setCurrentVerseIndex(parsed);
+        setJourneyStarted(true);
+        setVerseStage('card');
+      }
+    }
+  }, [searchParams]);
+
+  const handleToggleSaveToGallery = () => {
+    if (!currentVerse) return;
+    if (isSavedInGallery) {
+      removeSavedTafsir(currentVerse.id);
+      setIsSavedInGallery(false);
+      setSaveToastMessage('تمت إزالة الآية من المعرض الشخصي');
+    } else {
+      saveTafsir({
+        id: `verse-${currentVerse.id}`,
+        verseId: currentVerse.id,
+        surahNumber: currentVerse.surahNumber,
+        surahName: currentVerse.surahName,
+        verseNumber: currentVerse.verseNumber,
+        arabicText: currentVerse.arabicText,
+        tafsir: currentVerse.tafsir,
+        realLifeExample: currentVerse.realLifeExample,
+        tafsirEvidence: currentVerse.tafsirEvidence,
+        sources: currentVerse.sources,
+        savedAt: new Date().toISOString()
+      });
+      setIsSavedInGallery(true);
+      setSaveToastMessage('تم حفظ الآية وتفسيرها ومثالها في المعرض الشخصي بنجاح! ✨');
+    }
+
+    setTimeout(() => {
+      setSaveToastMessage(null);
+    }, 3500);
+  };
 
   // Load current verse when index changes or journey starts
   useEffect(() => {
@@ -218,7 +331,7 @@ export default function TafsirPage() {
     const newTodayCount = todayCompletedCount + 1;
     setTodayCompletedCount(newTodayCount);
 
-    if (newTodayCount >= DAILY_GOAL_VERSES) {
+    if (newTodayCount >= dailyTargetCount) {
       const dateInfo = getTodayDateInfo();
       setLastCompletedDateKey(dateInfo.key);
       setLastCompletedArabic(dateInfo.formattedToday);
@@ -265,8 +378,20 @@ export default function TafsirPage() {
     setSelectedOption(null);
   };
 
+  const handleSelectSurahVerse = (surahNumber: number, verseNumberInSurah: number) => {
+    const globalId = getGlobalVerseId(surahNumber, verseNumberInSurah);
+    setCurrentVerseIndex(globalId);
+    setJourneyStarted(true);
+    setVerseStage('card');
+    setSelectedOption(null);
+    setCurrentQuiz(null);
+    setShowQuranIndexModal(false);
+    setSelectedSurahForPicker(null);
+  };
+
   const overallProgressPercentage = ((completedVerseIds.length / TOTAL_QURAN_VERSES) * 100).toFixed(2);
-  const currentDayNumber = Math.floor(completedVerseIds.length / DAILY_GOAL_VERSES) + 1;
+  const currentDayNumber = Math.floor(completedVerseIds.length / dailyTargetCount) + 1;
+  const currentMadinahPage = currentVerse?.page || Math.min(604, Math.max(1, Math.ceil(currentVerseIndex / 10.3)));
 
   return (
     <div className="w-full flex flex-col items-center justify-start p-4 sm:p-8 font-arabic text-white min-h-[85vh]" dir="rtl">
@@ -288,19 +413,24 @@ export default function TafsirPage() {
             </div>
 
             <div>
-              <div className="flex items-center gap-2 mb-1">
+              <div className="flex flex-wrap items-center gap-2 mb-1">
                 <span className="bg-amber-500/20 text-amber-300 text-xs font-bold px-3 py-1 rounded-full border border-amber-500/30 flex items-center gap-1">
                   <Sparkles size={12} /> الصفحة الأساسية لتعلم القرآن
                 </span>
                 <span className="bg-violet-500/20 text-violet-300 text-xs font-bold px-3 py-1 rounded-full border border-violet-500/30">
-                  اليوم {currentDayNumber} من 367
+                  اليوم {currentDayNumber}
+                </span>
+                <span className="bg-cyan-500/20 text-cyan-300 text-xs font-bold px-3 py-1 rounded-full border border-cyan-500/30 font-mono">
+                  ص {currentMadinahPage} من {TOTAL_MADINAH_PAGES} مصحف المدينة
                 </span>
               </div>
               <h1 className="text-3xl sm:text-4xl font-black text-white tracking-tight drop-shadow-md">
-                SiteSec Tafsir
+                Shaheen Tafsir
               </h1>
               <p className="text-blue-200/90 text-sm sm:text-base mt-1 leading-relaxed">
-                رحلتك التفاعلية لختم تفسير القرآن الكريم كاملاً (17 آية يومياً خلال سنة).
+                {goalMode === 'verses' 
+                  ? 'رحلتك التفاعلية لختم تفسير القرآن الكريم كاملاً (17 آية يومياً خلال سنة).' 
+                  : 'رحلتك التفاعلية الأسهل والأسرع (صفحتان يومياً بحساب مصحف المدينة النبوية خلال ~302 يوم).'}
               </p>
             </div>
           </div>
@@ -312,8 +442,66 @@ export default function TafsirPage() {
             <div className="text-xs text-violet-200 font-bold bg-white/5 px-3 py-1.5 rounded-xl border border-white/10">
               نسبة الإنجاز الإجمالية: {overallProgressPercentage}%
             </div>
+
+            <button 
+              onClick={() => setShowQuranIndexModal(true)}
+              className="mt-1 px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs sm:text-sm rounded-xl shadow-lg transition-all transform hover:scale-105 flex items-center gap-1.5 cursor-pointer"
+            >
+              <List size={16} />
+              فهرس سور وآيات القرآن 📖
+            </button>
           </div>
         </motion.div>
+
+        {/* Goal Mode Selector: 17 verses vs 2 pages of Madinah Mushaf */}
+        <div className="w-full bg-slate-900/90 border border-violet-500/30 rounded-2xl p-4 sm:p-5 backdrop-blur-xl flex flex-col md:flex-row items-center justify-between gap-4 shadow-xl">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-violet-600/20 text-violet-300 flex items-center justify-center border border-violet-400/30 flex-shrink-0">
+              <Zap size={20} className="text-amber-300" />
+            </div>
+            <div>
+              <h3 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
+                <span>اختر وتيرة الورد اليومي التي تناسبك:</span>
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-normal">
+                  خيارك محفوظ ويمكنك تغييره
+                </span>
+              </h3>
+              <p className="text-xs text-blue-200/70 mt-0.5">
+                {goalMode === 'verses' 
+                  ? 'النظام الحالي: ١٧ آية يومياً (ختم كامل في ٣٦٦ يوماً).' 
+                  : 'النظام الحالي: صفحتان يومياً بحساب مصحف المدينة النبوية (أسهل وأسرع، ختم في ~٣٠٢ يوم).'}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 bg-black/40 p-1.5 rounded-2xl border border-white/10 w-full md:w-auto">
+            <button
+              type="button"
+              onClick={() => handleSelectGoalMode('verses')}
+              className={`flex-1 md:flex-none px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                goalMode === 'verses'
+                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-[0_0_20px_rgba(245,158,11,0.5)] scale-[1.02]'
+                  : 'text-white/70 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <BookOpen size={16} />
+              <span>١٧ آية يومياً 📖</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSelectGoalMode('pages')}
+              className={`flex-1 md:flex-none px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                goalMode === 'pages'
+                  ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 shadow-[0_0_20px_rgba(6,182,212,0.5)] scale-[1.02]'
+                  : 'text-white/70 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Zap size={16} />
+              <span>صفحتان يومياً (مصحف المدينة) ⚡</span>
+            </button>
+          </div>
+        </div>
 
         {/* Global Progress Bar */}
         <div className="w-full bg-slate-900/80 border border-white/10 rounded-2xl p-4 backdrop-blur-md flex flex-col gap-2">
@@ -349,7 +537,7 @@ export default function TafsirPage() {
 
             <div className="space-y-4 text-blue-100 text-base leading-relaxed">
               <p className="bg-amber-500/10 p-4 rounded-2xl border border-amber-500/20 text-amber-100">
-                🌱 <strong>مرحباً بك في SiteSec Tafsir:</strong> تم تصميم هذه الصفحة لتسهيل تعلم واستيعاب تفسير القرآن الكريم عبر <strong>17 آية يومياً</strong>، لتختم تفسير كلام الله كاملاً في غضون سنة تقريباً بأسلوب تفاعلي منظم.
+                🌱 <strong>مرحباً بك في Shaheen Tafsir:</strong> تم تصميم هذه المنصة لتسهيل تعلم واستيعاب تفسير القرآن الكريم، حيث يمكنك الاختيار بين <strong>١٧ آية يومياً</strong> أو <strong>صفحتين يومياً بحساب مصحف المدينة النبوية (أسهل وأسرع)</strong> لتختم تفسير كلام الله بأسلوب تفاعلي منظم.
               </p>
 
               <p className="bg-red-500/10 p-4 rounded-2xl border border-red-500/20 text-red-200">
@@ -359,9 +547,9 @@ export default function TafsirPage() {
 
             <button 
               onClick={handleAcknowledgeNotice}
-              className="self-end px-8 py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black rounded-2xl shadow-[0_0_25px_rgba(245,158,11,0.4)] transition-all transform hover:scale-105 mt-2"
+              className="self-end px-8 py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black rounded-2xl shadow-[0_0_25px_rgba(245,158,11,0.4)] transition-all transform hover:scale-105 mt-2 cursor-pointer"
             >
-              فهمت ذلك وأوافق، ابدأ رحلة التعلم 🚀
+              فهمت ذلك وأوافق، {goalMode === 'verses' ? 'بدء رحلة التفسير اليومية (17 آية)' : 'بدء رحلة التفسير اليومية صفحتين'} 🚀
             </button>
           </motion.div>
         )}
@@ -379,7 +567,7 @@ export default function TafsirPage() {
               </div>
 
               <div className="inline-flex items-center gap-2 bg-amber-500/20 border border-amber-500/30 text-amber-300 font-bold px-4 py-1.5 rounded-full text-xs sm:text-sm">
-                <Sparkles size={14} /> تم إنجاز الورد اليومي الكامل (17 آية) لليوم {lastCompletedArabic || todayInfo.formattedToday}
+                <Sparkles size={14} /> تم إنجاز الورد اليومي الكامل ({goalMode === 'verses' ? '١٧ آية' : 'صفحتان من مصحف المدينة'}) لليوم {lastCompletedArabic || todayInfo.formattedToday}
               </div>
 
               <h2 className="text-3xl sm:text-4xl font-black text-white leading-tight">
@@ -387,7 +575,7 @@ export default function TafsirPage() {
               </h2>
 
               <p className="text-blue-100 text-base sm:text-lg max-w-2xl leading-relaxed bg-black/30 p-6 rounded-2xl border border-white/10">
-                حفاظاً على التدرج والترسيخ العلمي في تعلم القرآن الكريم (17 آية يومياً لختم القرآن في سنة)، يُغلق التتابع تلقائياً لليوم <strong>({lastCompletedArabic || todayInfo.formattedToday})</strong>، وسيكون الموعد القادم لفتح الـ 17 آية التالية غداً بتاريخ <strong>({nextUnlockedArabic || todayInfo.formattedTomorrow})</strong> بحول الله.
+                حفاظاً على التدرج والترسيخ العلمي في تعلم القرآن الكريم ({goalMode === 'verses' ? '١٧ آية يومياً لختم القرآن في عام' : 'صفحتان يومياً بحساب مصحف المدينة لختم أسهل وأسرع'})، يُغلق التتابع تلقائياً لليوم <strong>({lastCompletedArabic || todayInfo.formattedToday})</strong>، وسيكون الموعد القادم لفتح الورد التالي غداً بتاريخ <strong>({nextUnlockedArabic || todayInfo.formattedTomorrow})</strong> بحول الله.
               </p>
 
               {/* Countdown Timer to Midnight */}
@@ -448,16 +636,18 @@ export default function TafsirPage() {
               </h2>
 
               <p className="text-blue-200 text-lg max-w-2xl leading-relaxed">
-                ستقرأ كل آية مع تفسيرها الميسر ومثال تطبيقي، ثم تبدأ الاختبار بعد فترة تفكير مدتها 15 ثانية لتأكيد الفهم والانتقال للآية التالية.
+                {goalMode === 'verses'
+                  ? 'ستقرأ وتتدبر 17 آية مع تفسيرها الميسر ومثال تطبيقي، ثم تبدأ الاختبار بعد فترة تفكير مدتها 15 ثانية لتأكيد الفهم والانتقال للآية التالية.'
+                  : 'ستقرأ وتتدبر صفحتين كاملتين من مصحف المدينة النبوية مع التفسير الميسر والمثال التطبيقي والاختبار التفاعلي، لختم أسرع وأسهل.'}
               </p>
 
               <div className="flex flex-wrap items-center justify-center gap-4 mt-2">
                 <button 
                   onClick={handleStartJourney}
-                  className="px-10 py-5 bg-gradient-to-r from-violet-600 via-purple-600 to-amber-500 hover:from-violet-500 hover:to-amber-400 text-white font-black text-xl rounded-2xl shadow-[0_0_35px_rgba(139,92,246,0.5)] transition-all transform hover:scale-105 flex items-center gap-3"
+                  className="px-10 py-5 bg-gradient-to-r from-violet-600 via-purple-600 to-amber-500 hover:from-violet-500 hover:to-amber-400 text-white font-black text-xl rounded-2xl shadow-[0_0_35px_rgba(139,92,246,0.5)] transition-all transform hover:scale-105 flex items-center gap-3 cursor-pointer"
                 >
                   <Play size={24} fill="white" />
-                  بدء رحلة التفسير اليومية (17 آية)
+                  {goalMode === 'verses' ? 'بدء رحلة التفسير اليومية (17 آية)' : 'بدء رحلة التفسير اليومية صفحتين'}
                 </button>
               </div>
             </motion.div>
@@ -473,11 +663,19 @@ export default function TafsirPage() {
               <div className="flex items-center gap-3">
                 <span className="w-3 h-3 rounded-full bg-emerald-400 animate-ping"></span>
                 <span className="font-bold text-white text-base sm:text-lg">
-                  إنجاز جلسة اليوم: <span className="text-amber-400">{todayCompletedCount}</span> من <span className="text-amber-400">{DAILY_GOAL_VERSES} آية</span>
+                  إنجاز جلسة اليوم: <span className="text-amber-400">{todayCompletedCount}</span> من <span className="text-amber-400">{goalMode === 'verses' ? `${DAILY_GOAL_VERSES} آية` : 'صفحتين (مصحف المدينة)'}</span>
                 </span>
               </div>
 
               <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => setShowQuranIndexModal(true)}
+                  className="px-3 py-1.5 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 hover:bg-amber-500/30 text-xs font-bold transition-all flex items-center gap-1.5"
+                >
+                  <List size={14} />
+                  فهرس القرآن
+                </button>
+
                 <button 
                   onClick={() => {
                     if (currentVerseIndex > 1) setCurrentVerseIndex(prev => prev - 1);
@@ -499,6 +697,27 @@ export default function TafsirPage() {
                 </button>
               </div>
             </div>
+
+            {/* Toast Feedback for Saving to Personal Gallery */}
+            <AnimatePresence>
+              {saveToastMessage && (
+                <motion.div
+                  initial={{ opacity: 0, y: -20, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -20, scale: 0.95 }}
+                  className="fixed top-24 left-1/2 transform -translate-x-1/2 z-50 bg-gradient-to-r from-amber-600 via-violet-600 to-indigo-600 text-white px-6 py-3.5 rounded-2xl shadow-[0_10px_35px_rgba(0,0,0,0.6)] border border-amber-300/40 font-arabic font-bold flex items-center gap-3 backdrop-blur-xl"
+                >
+                  <Bookmark size={20} className="fill-amber-300 text-amber-300 flex-shrink-0" />
+                  <span className="text-sm sm:text-base">{saveToastMessage}</span>
+                  <Link 
+                    to="/database.html" 
+                    className="mr-2 px-3 py-1 bg-white/20 hover:bg-white/30 text-amber-200 text-xs rounded-xl border border-white/20 transition-colors whitespace-nowrap"
+                  >
+                    عرض المعرض ↗
+                  </Link>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Skeleton Loading State */}
             {loadingVerse && (
@@ -562,18 +781,39 @@ export default function TafsirPage() {
               >
                 {/* Header Tag */}
                 <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-6">
-                  <div className="flex items-center gap-3">
-                    <span className="px-4 py-2 bg-amber-500/20 text-amber-300 font-bold text-lg rounded-2xl border border-amber-500/30">
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <span className="px-4 py-2 bg-amber-500/20 text-amber-300 font-bold text-base sm:text-lg rounded-2xl border border-amber-500/30">
                       سورة {currentVerse.surahName} - الآية {currentVerse.verseNumber}
                     </span>
                     <span className="px-3 py-1.5 bg-violet-600/20 text-violet-300 text-xs font-bold rounded-xl border border-violet-500/30">
-                      الآية الشاملة رقم {currentVerse.id} من 6236
+                      الآية الشاملة #{currentVerse.id} من 6236
+                    </span>
+                    <span className="px-3 py-1.5 bg-cyan-600/20 text-cyan-300 text-xs font-bold rounded-xl border border-cyan-500/30 font-mono">
+                      ص {currentVerse.page || currentMadinahPage} مصحف المدينة
+                    </span>
+                    <span className="px-3 py-1.5 bg-emerald-500/20 text-emerald-300 text-xs font-bold rounded-xl border border-emerald-500/30">
+                      الورد اليومي: {todayCompletedCount} من {dailyTargetCount} {goalMode === 'verses' ? 'آية' : 'آية (صفحتين)'}
                     </span>
                   </div>
 
-                  <span className="text-xs text-blue-200/80 bg-white/5 px-3 py-1.5 rounded-lg border border-white/5">
-                    بطاقة التفسير التفاعلية 📖
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={handleToggleSaveToGallery}
+                      className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all border shadow-lg cursor-pointer ${
+                        isSavedInGallery
+                          ? 'bg-amber-500/30 border-amber-400 text-amber-200 shadow-[0_0_15px_rgba(245,158,11,0.3)]'
+                          : 'bg-white/10 hover:bg-white/20 border-white/20 text-white/90 hover:text-white'
+                      }`}
+                      title={isSavedInGallery ? 'الآية محفوظة في معرضك الشخصي' : 'حفظ هذا التفسير والمثال في المعرض الشخصي'}
+                    >
+                      <Bookmark size={18} className={isSavedInGallery ? 'fill-amber-400 text-amber-400' : 'text-white/70'} />
+                      <span>{isSavedInGallery ? 'محفوظة بالمعرض الشخصي ★' : 'حفظ في المعرض الشخصي'}</span>
+                    </button>
+
+                    <span className="text-xs text-blue-200/80 bg-white/5 px-3 py-1.5 rounded-lg border border-white/5 hidden sm:inline-block">
+                      بطاقة التفسير التفاعلية 📖
+                    </span>
+                  </div>
                 </div>
 
                 {/* Arabic Quranic Verse */}
@@ -596,14 +836,67 @@ export default function TafsirPage() {
                   </div>
 
                   {/* Real Life Example */}
-                  <div className="bg-blue-900/20 p-6 rounded-2xl border border-blue-500/20">
-                    <h3 className="text-xl font-bold text-blue-300 mb-3 flex items-center gap-2">
-                      <Zap size={22} className="text-blue-400" />
-                      تطبيق عملي ومثال من الواقع
-                    </h3>
-                    <p className="text-blue-100 text-base sm:text-lg leading-relaxed">
-                      {currentVerse.realLifeExample}
-                    </p>
+                  <div className="bg-blue-900/20 p-6 rounded-2xl border border-blue-500/20 flex flex-col gap-4">
+                    <div>
+                      <h3 className="text-xl font-bold text-blue-300 mb-3 flex items-center gap-2">
+                        <Zap size={22} className="text-blue-400" />
+                        تطبيق عملي ومثال من الواقع
+                      </h3>
+                      <p className="text-blue-100 text-base sm:text-lg leading-relaxed">
+                        {currentVerse.realLifeExample}
+                      </p>
+                    </div>
+
+                    {/* Red Interactive Evidence Trigger & Glowing Evidence Box */}
+                    <div className="pt-3 border-t border-white/10 flex flex-col gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setShowTafsirEvidence(prev => !prev)}
+                        className={`self-start px-4 py-2.5 rounded-xl border text-xs sm:text-sm font-bold flex items-center gap-2.5 transition-all cursor-pointer shadow-lg ${
+                          showTafsirEvidence
+                            ? 'bg-red-600/30 text-red-200 border-red-400 shadow-[0_0_20px_rgba(239,68,68,0.5)]'
+                            : 'bg-red-500/15 hover:bg-red-500/25 text-red-300 hover:text-red-100 border-red-500/40 hover:border-red-400 shadow-[0_0_15px_rgba(239,68,68,0.25)]'
+                        }`}
+                      >
+                        <span className="relative flex h-2.5 w-2.5">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+                        </span>
+                        <span>{showTafsirEvidence ? 'إخفاء الدليل من التفسير ✕' : 'ما هو الدليل على صحة ذلك من التفسير؟ (اضغط للتأكد) 🔍'}</span>
+                      </button>
+
+                      <AnimatePresence>
+                        {showTafsirEvidence && (
+                          <motion.div
+                            initial={{ opacity: 0, y: -8, height: 0 }}
+                            animate={{ opacity: 1, y: 0, height: 'auto' }}
+                            exit={{ opacity: 0, y: -8, height: 0 }}
+                            transition={{ duration: 0.3 }}
+                            className="overflow-hidden"
+                          >
+                            <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-red-950/80 via-black/80 to-red-950/80 border-2 border-red-500/70 shadow-[0_0_35px_rgba(239,68,68,0.4)] relative backdrop-blur-xl space-y-2.5">
+                              <div className="flex items-center justify-between text-xs text-red-300 font-bold border-b border-red-500/30 pb-2">
+                                <span className="flex items-center gap-1.5 text-red-400 text-sm">
+                                  <CheckCircle2 size={16} className="text-red-400 animate-pulse" />
+                                  <span>الدليل والحجة من نص التفسير الميسر المعروض أعلاه فقط:</span>
+                                </span>
+                                <span className="px-2 py-0.5 rounded-full bg-red-500/20 border border-red-500/40 text-[11px] text-red-300 font-mono">
+                                  موثق من التفسير
+                                </span>
+                              </div>
+
+                              <p className="text-red-100 text-sm sm:text-base leading-relaxed bg-black/50 p-4 rounded-xl border border-red-500/30 font-medium">
+                                {currentVerse.tafsirEvidence || `الشاهد المباشر من التفسير الميسر: "${currentVerse.tafsir}" - وهو ما يثبت دلالة الآية الصريحة على صحة هذا التطبيق العملي وربطه المباشر بالمعنى المعتمد.`}
+                              </p>
+
+                              <div className="text-[11px] text-red-300/70 flex items-center justify-between pt-1">
+                                <span>* تم استنباط هذا الدليل حصرياً من التفسير الميسر المذكور أعلاه دون أي مصدر خارجي.</span>
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
                   </div>
 
                   {/* Sources */}
@@ -615,11 +908,23 @@ export default function TafsirPage() {
                   </div>
                 </div>
 
-                {/* Action Button: Start Quiz */}
-                <div className="border-t border-white/10 pt-6 flex justify-end">
+                {/* Action Buttons: Save to Gallery & Start Quiz */}
+                <div className="border-t border-white/10 pt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <button
+                    onClick={handleToggleSaveToGallery}
+                    className={`w-full sm:w-auto px-6 py-4 rounded-2xl font-bold text-sm sm:text-base flex items-center justify-center gap-2.5 transition-all border cursor-pointer ${
+                      isSavedInGallery
+                        ? 'bg-amber-500/25 border-amber-400/60 text-amber-300 hover:bg-amber-500/35'
+                        : 'bg-white/10 hover:bg-white/15 border-white/20 text-white/95'
+                    }`}
+                  >
+                    <Bookmark size={19} className={isSavedInGallery ? 'fill-amber-400 text-amber-400' : 'text-amber-300'} />
+                    <span>{isSavedInGallery ? 'محفوظة في المعرض الشخصي (إلغاء الحفظ)' : 'حفظ التفسير في المعرض الشخصي 📌'}</span>
+                  </button>
+
                   <button 
                     onClick={handleStartQuiz}
-                    className="w-full sm:w-auto px-10 py-4 bg-gradient-to-r from-violet-600 to-amber-500 hover:from-violet-500 hover:to-amber-400 text-white font-black text-lg rounded-2xl shadow-[0_0_25px_rgba(139,92,246,0.4)] transition-all transform hover:scale-105 flex items-center justify-center gap-3"
+                    className="w-full sm:w-auto px-10 py-4 bg-gradient-to-r from-violet-600 to-amber-500 hover:from-violet-500 hover:to-amber-400 text-white font-black text-lg rounded-2xl shadow-[0_0_25px_rgba(139,92,246,0.4)] transition-all transform hover:scale-105 flex items-center justify-center gap-3 cursor-pointer"
                   >
                     بدء الاختبار والتأكد من الفهم ⚡
                   </button>
@@ -822,13 +1127,27 @@ export default function TafsirPage() {
                   تم تسديد الآية وإضافتها لسجل حفظك بنجاح ✅
                 </div>
 
-                <button 
-                  onClick={handleNextVerse}
-                  className="px-10 py-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xl rounded-2xl shadow-lg transition-all transform hover:scale-105 mt-2 flex items-center gap-3"
-                >
-                  <span>الانتقال للآية التالية</span>
-                  <ChevronRight size={24} />
-                </button>
+                <div className="flex flex-wrap items-center justify-center gap-4 mt-2">
+                  <button
+                    onClick={handleToggleSaveToGallery}
+                    className={`px-6 py-3.5 rounded-2xl font-bold text-sm sm:text-base flex items-center justify-center gap-2 border cursor-pointer transition-all ${
+                      isSavedInGallery
+                        ? 'bg-amber-500/30 border-amber-400 text-amber-200'
+                        : 'bg-black/30 hover:bg-black/50 border-white/20 text-white'
+                    }`}
+                  >
+                    <Bookmark size={18} className={isSavedInGallery ? 'fill-amber-400 text-amber-400' : ''} />
+                    <span>{isSavedInGallery ? 'محفوظة في المعرض الشخصي ★' : 'حفظ في المعرض الشخصي 📌'}</span>
+                  </button>
+
+                  <button 
+                    onClick={handleNextVerse}
+                    className="px-10 py-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xl rounded-2xl shadow-lg transition-all transform hover:scale-105 flex items-center gap-3 cursor-pointer"
+                  >
+                    <span>الانتقال للآية التالية</span>
+                    <ChevronRight size={24} />
+                  </button>
+                </div>
               </motion.div>
             )}
 
@@ -887,20 +1206,26 @@ export default function TafsirPage() {
                 <div className="space-y-2">
                   <h3 className="text-3xl font-black text-white">إنجاز يستحق الفخر! 🌟</h3>
                   <p className="text-amber-200 text-lg leading-relaxed">
-                    مبارك! لقد أنجزت تعلم وتفسير <strong className="text-white">17 آية لهذا اليوم</strong> بنجاح واقتدار!
+                    {goalMode === 'verses' ? (
+                      <>مبارك! لقد أنجزت تعلم وتفسير <strong className="text-white">١٧ آية لهذا اليوم</strong> بنجاح واقتدار!</>
+                    ) : (
+                      <>مبارك! لقد أتممت تعلم وتفسير <strong className="text-white">صفحتين كاملتين من مصحف المدينة النبوية</strong> بنجاح وسرعة استثنائية!</>
+                    )}
                   </p>
                 </div>
 
-                <div className="bg-black/40 p-4 rounded-2xl border border-white/10 text-xs text-blue-200 w-full">
-                  استمرارك اليومي بهذا المعدل سيمكنك بفضل الله من ختم تفسير القرآن كاملاً في عام واحد.
+                <div className="bg-black/40 p-4 rounded-2xl border border-white/10 text-xs text-blue-200 w-full leading-relaxed">
+                  {goalMode === 'verses'
+                    ? 'استمرارك اليومي بهذا المعدل سيمكنك بفضل الله من ختم تدبر القرآن كاملاً في عام واحد (~٣٦٦ يوماً).'
+                    : 'استمرارك اليومي بهذا المعدل الأسهل والأسرع سيمكنك بفضل الله من ختم تدبر مصحف المدينة كاملاً في ~٣٠٢ يوم.'}
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-4 w-full">
                   <button 
                     onClick={() => setShowGoalModal(false)}
-                    className="flex-1 py-3.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-base transition-colors shadow-lg"
+                    className="flex-1 py-3.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-base transition-colors shadow-lg cursor-pointer"
                   >
-                    متابعة الـ 17 آية التالية 🔥
+                    متابعة الورد التالي 🔥
                   </button>
                   <Link 
                     to="/"
@@ -908,6 +1233,243 @@ export default function TafsirPage() {
                   >
                     العودة للرئيسية 🏠
                   </Link>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* Full Quran Surahs & Verses Index Modal */}
+        <AnimatePresence>
+          {showQuranIndexModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+              <motion.div 
+                initial={{ opacity: 0 }} 
+                animate={{ opacity: 1 }} 
+                exit={{ opacity: 0 }} 
+                className="fixed inset-0 bg-black/80 backdrop-blur-xl"
+                onClick={() => {
+                  setShowQuranIndexModal(false);
+                  setSelectedSurahForPicker(null);
+                }}
+              />
+
+              <motion.div 
+                initial={{ scale: 0.95, opacity: 0, y: 20 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.95, opacity: 0, y: 20 }}
+                className="bg-slate-900 border border-violet-500/40 rounded-3xl shadow-[0_0_80px_rgba(139,92,246,0.3)] z-10 w-full max-w-4xl max-h-[90vh] flex flex-col relative overflow-hidden font-arabic"
+              >
+                {/* Modal Header */}
+                <div className="p-5 sm:p-6 bg-gradient-to-r from-violet-950 via-slate-900 to-slate-950 border-b border-white/10 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-amber-300 shadow-md">
+                      <BookOpen size={26} />
+                    </div>
+                    <div>
+                      <h2 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2">
+                        فهرس القرآن الكريم كاملاً
+                      </h2>
+                      <p className="text-blue-200/80 text-xs sm:text-sm">
+                        اختر أي سورة من الـ 114 سورة، ثم اختر الآية التي تريد قراءة تفسيرها
+                      </p>
+                    </div>
+                  </div>
+
+                  <button 
+                    onClick={() => {
+                      setShowQuranIndexModal(false);
+                      setSelectedSurahForPicker(null);
+                    }}
+                    className="w-10 h-10 rounded-xl bg-white/5 hover:bg-white/15 border border-white/10 flex items-center justify-center text-white/80 hover:text-white transition-colors"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+
+                {/* Modal Content Body */}
+                <div className="p-5 sm:p-6 overflow-y-auto space-y-6 flex-1 custom-scrollbar">
+                  
+                  {/* View 1: Surah Selector View */}
+                  {!selectedSurahForPicker ? (
+                    <>
+                      {/* Search & Filter Controls */}
+                      <div className="flex flex-col sm:flex-row gap-3">
+                        <div className="relative flex-1">
+                          <Search size={18} className="absolute right-3.5 top-3.5 text-blue-300/60" />
+                          <input 
+                            type="text"
+                            value={surahSearchQuery}
+                            onChange={(e) => setSurahSearchQuery(e.target.value)}
+                            placeholder="ابحث عن اسم السورة (مثلاً: البقرة، يس) أو رقمها..."
+                            className="w-full bg-slate-950 border border-white/15 rounded-2xl py-3 pr-10 pl-4 text-white placeholder:text-blue-200/40 text-sm focus:outline-none focus:border-amber-400 transition-colors"
+                          />
+                          {surahSearchQuery && (
+                            <button 
+                              onClick={() => setSurahSearchQuery('')}
+                              className="absolute left-3 top-3.5 text-xs text-white/50 hover:text-white"
+                            >
+                              إلغاء
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Surah Type Filter Tabs */}
+                        <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-2xl border border-white/10">
+                          <button 
+                            onClick={() => setSurahTypeFilter('all')}
+                            className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${surahTypeFilter === 'all' ? 'bg-amber-500 text-slate-950 shadow' : 'text-white/70 hover:text-white'}`}
+                          >
+                            الكل (114)
+                          </button>
+                          <button 
+                            onClick={() => setSurahTypeFilter('مكية')}
+                            className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${surahTypeFilter === 'مكية' ? 'bg-amber-500 text-slate-950 shadow' : 'text-white/70 hover:text-white'}`}
+                          >
+                            مكية
+                          </button>
+                          <button 
+                            onClick={() => setSurahTypeFilter('مدنية')}
+                            className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${surahTypeFilter === 'مدنية' ? 'bg-amber-500 text-slate-950 shadow' : 'text-white/70 hover:text-white'}`}
+                          >
+                            مدنية
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Direct Global Verse Jump Box */}
+                      <div className="bg-gradient-to-r from-amber-500/10 via-violet-500/10 to-blue-500/10 border border-amber-500/20 p-4 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3">
+                        <div className="flex items-center gap-2 text-amber-300 text-sm font-bold">
+                          <Hash size={18} />
+                          <span>الانتقال السريع برقم الآية الكلي (من 1 إلى 6236):</span>
+                        </div>
+                        <div className="flex items-center gap-2 w-full sm:w-auto">
+                          <input 
+                            type="number"
+                            min={1}
+                            max={TOTAL_QURAN_VERSES}
+                            value={jumpVerseInput}
+                            onChange={(e) => setJumpVerseInput(e.target.value)}
+                            placeholder="مثلاً: 255"
+                            className="w-28 bg-slate-950 border border-white/20 rounded-xl px-3 py-2 text-white text-center text-sm font-mono focus:outline-none focus:border-amber-400"
+                          />
+                          <button 
+                            onClick={() => {
+                              const num = parseInt(jumpVerseInput, 10);
+                              if (!isNaN(num) && num >= 1 && num <= TOTAL_QURAN_VERSES) {
+                                setCurrentVerseIndex(num);
+                                setJourneyStarted(true);
+                                setVerseStage('card');
+                                setSelectedOption(null);
+                                setCurrentQuiz(null);
+                                setShowQuranIndexModal(false);
+                                setJumpVerseInput('');
+                              }
+                            }}
+                            className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl transition-all"
+                          >
+                            انتقال 🚀
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Surahs Grid */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                        {QURAN_SURAHS
+                          .filter(s => {
+                            const matchQuery = s.name.includes(surahSearchQuery.trim()) || 
+                                               s.number.toString().includes(surahSearchQuery.trim()) ||
+                                               s.englishName.toLowerCase().includes(surahSearchQuery.trim().toLowerCase());
+                            const matchType = surahTypeFilter === 'all' || s.type === surahTypeFilter;
+                            return matchQuery && matchType;
+                          })
+                          .map((surah) => (
+                            <button 
+                              key={surah.number}
+                              onClick={() => setSelectedSurahForPicker(surah)}
+                              className="bg-slate-950/80 hover:bg-violet-950/60 border border-white/10 hover:border-violet-500/50 p-4 rounded-2xl text-right transition-all transform hover:-translate-y-0.5 flex items-center justify-between group shadow-sm"
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 font-mono text-amber-300 font-bold text-sm flex items-center justify-center flex-shrink-0 group-hover:bg-amber-500 group-hover:text-slate-950 transition-colors">
+                                  {surah.number}
+                                </div>
+                                <div>
+                                  <h4 className="font-bold text-white text-base group-hover:text-amber-300 transition-colors">
+                                    سورة {surah.name}
+                                  </h4>
+                                  <p className="text-xs text-blue-200/70 mt-0.5">
+                                    {surah.type} • {surah.versesCount} آية
+                                  </p>
+                                </div>
+                              </div>
+
+                              <ChevronRight size={18} className="text-white/30 group-hover:text-amber-400 transition-colors rotate-180" />
+                            </button>
+                          ))}
+                      </div>
+                    </>
+                  ) : (
+                    /* View 2: Verses Picker for Selected Surah */
+                    <div className="space-y-6">
+                      {/* Back button & Surah title */}
+                      <div className="flex items-center justify-between border-b border-white/10 pb-4">
+                        <button 
+                          onClick={() => setSelectedSurahForPicker(null)}
+                          className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-xs font-bold rounded-xl border border-white/10 flex items-center gap-2 transition-colors"
+                        >
+                          <ArrowRight size={16} /> العودة لقائمة السور
+                        </button>
+
+                        <div className="text-left">
+                          <h3 className="text-2xl font-black text-amber-300">
+                            سورة {selectedSurahForPicker.name}
+                          </h3>
+                          <span className="text-xs text-blue-200">
+                            سورة {selectedSurahForPicker.type} • عدد آياتها: {selectedSurahForPicker.versesCount} آية
+                          </span>
+                        </div>
+                      </div>
+
+                      <p className="text-sm text-blue-100 bg-black/40 p-3.5 rounded-2xl border border-white/10 text-center">
+                        انقر على رقم أي آية أدناه لقراءة تفسيرها الميسر والمثال التطبيقي المباشر:
+                      </p>
+
+                      {/* Verses Number Buttons Grid */}
+                      <div className="grid grid-cols-5 sm:grid-cols-8 md:grid-cols-10 gap-2.5">
+                        {Array.from({ length: selectedSurahForPicker.versesCount }, (_, i) => i + 1).map((vNum) => {
+                          const globalId = getGlobalVerseId(selectedSurahForPicker.number, vNum);
+                          const isCompleted = completedVerseIds.includes(globalId);
+                          const isCurrent = currentVerseIndex === globalId;
+                          const isSaved = isVerseSaved(globalId);
+
+                          return (
+                            <button
+                              key={vNum}
+                              onClick={() => handleSelectSurahVerse(selectedSurahForPicker.number, vNum)}
+                              className={`py-3 px-2 rounded-xl font-mono text-sm font-bold border transition-all flex flex-col items-center justify-center gap-0.5 relative ${
+                                isCurrent
+                                  ? 'bg-amber-500 text-slate-950 border-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.5)] scale-105'
+                                  : isCompleted
+                                  ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/40 hover:bg-emerald-900'
+                                  : 'bg-slate-950 text-white/90 border-white/10 hover:bg-violet-900/60 hover:border-amber-400/50 hover:text-amber-300'
+                              }`}
+                            >
+                              <div className="flex items-center gap-1">
+                                <span>{vNum}</span>
+                                {isSaved && <Bookmark size={10} className="fill-amber-400 text-amber-400" />}
+                              </div>
+                              {isCompleted ? (
+                                <span className="text-[9px] font-arabic font-normal text-emerald-400">مكتملة</span>
+                              ) : isSaved ? (
+                                <span className="text-[9px] font-arabic font-normal text-amber-300">محفوظة</span>
+                              ) : null}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                 </div>
               </motion.div>
             </div>
