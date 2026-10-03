@@ -136,30 +136,6 @@ const GlassCard: React.FC<GlassCardProps> = ({
 };
 
 export default function App() {
-  // Goal Mode State: 17 verses vs 2 pages of Madinah Mushaf
-  const [goalMode, setGoalMode] = useState<'verses' | 'pages'>(() => {
-    return (localStorage.getItem('shaheen_tafsir_goal_mode') as 'verses' | 'pages') || 'verses';
-  });
-
-  useEffect(() => {
-    const handleGoalModeUpdate = () => {
-      const savedMode = (localStorage.getItem('shaheen_tafsir_goal_mode') as 'verses' | 'pages') || 'verses';
-      setGoalMode(savedMode);
-    };
-    window.addEventListener('shaheen_goal_mode_changed', handleGoalModeUpdate);
-    window.addEventListener('storage', handleGoalModeUpdate);
-    return () => {
-      window.removeEventListener('shaheen_goal_mode_changed', handleGoalModeUpdate);
-      window.removeEventListener('storage', handleGoalModeUpdate);
-    };
-  }, []);
-
-  const handleSelectGoalMode = (mode: 'verses' | 'pages') => {
-    setGoalMode(mode);
-    localStorage.setItem('shaheen_tafsir_goal_mode', mode);
-    window.dispatchEvent(new Event('shaheen_goal_mode_changed'));
-  };
-
   // AI Setup & Key State
   const [geminiApiKey, setGeminiApiKey] = useState<string>(() => {
     return localStorage.getItem('GOOGLE_API_KEY') || '';
@@ -261,8 +237,8 @@ export default function App() {
     {
       stepNum: "01",
       title: "التلاوة والتدبر الميسر",
-      subtitle: "١٧ آية أو صفحتان من مصحف المدينة",
-      desc: "تقرأ يومياً الورد الذي تختاره: إما ١٧ آية لختم سنوي شامل، أو صفحتين يومياً بحساب مصحف المدينة النبوية (أسهل وأسرع)، مقرونة بالتفسير الميسر المعتمد من مجمع الملك فهد.",
+      subtitle: "١٧ آية يومياً مقسمة بعد كل صلاة",
+      desc: "تقرأ يومياً ١٧ آية مقرونة بالتفسير الميسر المعتمد من مجمع الملك فهد، موزعة بسلاسة بعد كل صلاة مفروضة (الفجر ٢، الظهر ٤، العصر ٤، المغرب ٣، العشاء ٤) بنفس عدد ركعات الصلاة لتختم القرآن كاملاً في عام واحد دون مشقة.",
       icon: BookOpen,
       color: "from-amber-400 to-orange-500",
       accent: "text-amber-400"
@@ -302,8 +278,8 @@ export default function App() {
       a: "Shaheen Islam هي منصة معرفية تفاعلية تهدف لتقريب علوم القرآن والتدبر الإيماني لكل مسلم، من خلال دمج أصالة الوحي والتفاسير المعتمدة بأحدث تقنيات الذكاء الاصطناعي لتوفير تجربة تعلم ذكية، عملية، ومحفزة على الاستمرار اليومي."
     },
     {
-      q: "ما هو الفرق بين نظام ١٧ آية ونظام صفحتين يومياً من مصحف المدينة؟",
-      a: "القرآن الكريم يضم 6236 آية (604 صفحات في مصحف المدينة). تتيح لك المنصة الاختيار بمرونة تامة: نظام الـ ١٧ آية يومياً لختم شامل في عام (~٣٦٦ يوماً)، أو نظام صفحتين يومياً بحساب مصحف المدينة النبوية (ورقة واحدة وجه وقفا) وهو أسرع وأسهل ويختم بك التدبر في ~٣٠٢ يوم."
+      q: "لماذا تم اعتماد ١٧ آية يومياً؟ وكيف أوزعها بعد كل صلاة مفروضة؟",
+      a: "الـ ١٧ آية يومياً تمثل القسمة المباركة لختم القرآن الكريم كاملاً (٦,٢٣٦ آية) تدبراً وفهماً وعملاً خلال عام واحد فقط (~٣٦٦ يوماً). وسر الاستمرار السهل هو توزيعها بعد الصلوات الخمس بالتوافق التام مع عدد ركعات الفريضة (١٧ ركعة مفروضة في اليوم والليلة):\n• بعد صلاة الفجر (ركعتان): آيتان فقط (٢ آية)\n• بعد صلاة الظهر (٤ ركعات): ٤ آيات\n• بعد صلاة العصر (٤ ركعات): ٤ آيات\n• بعد صلاة المغرب (٣ ركعات): ٣ آيات\n• بعد صلاة العشاء (٤ ركعات): ٤ آيات\nالمجموع = ١٧ آية يومياً! بضع دقائق فقط بعد كل صلاة تُبقي قلبك موصولاً بالقرآن طوال اليوم دون أي انقطاع."
     },
     {
       q: "ما هو مصدر التفسير المعتمد في المنصة؟ وهل يعتمد الذكاء الاصطناعي في الفتوى؟",
@@ -400,44 +376,67 @@ export default function App() {
             بوابتك الذكية الأولى لختم تدبر القرآن الكريم كاملاً، عبر نظام تفاعلي يجمع بين أصالة <span className="text-amber-300 font-bold">التفسير الميسر</span> وقوة <span className="text-cyan-300 font-bold">الذكاء الاصطناعي</span> لترسيخ الفهم واختبار الحفظ وربط الآيات بالواقع المعاش.
           </motion.p>
 
-          {/* Goal Mode Quick Selector */}
+          {/* Spiritual Prayer Times Division Promo Card */}
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.65, duration: 0.8 }}
-            className="flex flex-col sm:flex-row items-center gap-3 p-2 rounded-2xl bg-black/60 border border-violet-500/30 backdrop-blur-md mb-8 shadow-xl"
+            className="w-full max-w-4xl p-5 sm:p-6 rounded-3xl bg-gradient-to-r from-violet-950/70 via-black/80 to-blue-950/70 border border-amber-500/40 backdrop-blur-xl mb-8 shadow-[0_0_35px_rgba(245,158,11,0.2)] text-right relative overflow-hidden"
           >
-            <div className="flex items-center gap-2 px-3 text-xs font-bold text-amber-300">
-              <Zap size={14} className="text-amber-400 animate-pulse" />
-              <span>وتيرة الورد اليومي:</span>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-3 mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-300 flex items-center justify-center border border-amber-400/30 flex-shrink-0">
+                  <Sparkles size={20} className="text-amber-400 animate-spin" style={{ animationDuration: '6s' }} />
+                </div>
+                <div>
+                  <h4 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
+                    <span>خطة الـ ١٧ آية بعد كل صلاة: سر الاستمرار السهل</span>
+                    <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-normal">
+                      ١٧ ركعة مفروضة = ١٧ آية
+                    </span>
+                  </h4>
+                  <p className="text-xs text-blue-200/70 mt-0.5">
+                    لا ترهق نفسك دفعة واحدة! قسّم الـ ١٧ آية بعد صلواتك الخمس بنفس عدد ركعات الفريضة التي قضيتها:
+                  </p>
+                </div>
+              </div>
+
+              <div className="text-xs font-mono font-bold text-amber-300 bg-black/50 px-3 py-1.5 rounded-xl border border-white/10 whitespace-nowrap self-start sm:self-auto">
+                المجموع: ٢ + ٤ + ٤ + ٣ + ٤ = ١٧ آية
+              </div>
             </div>
 
-            <div className="flex items-center gap-2 bg-white/5 p-1 rounded-xl border border-white/10">
-              <button
-                type="button"
-                onClick={() => handleSelectGoalMode('verses')}
-                className={`px-4 py-2 rounded-lg text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
-                  goalMode === 'verses'
-                    ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-[0_0_20px_rgba(245,158,11,0.5)] scale-[1.02]'
-                    : 'text-blue-200/80 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                <BookOpen size={15} />
-                <span>١٧ آية يومياً (ختم سنوي)</span>
-              </button>
+            {/* 5 Prayers Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-center">
+              <div className="p-3 rounded-2xl bg-white/5 border border-white/10 hover:border-amber-400/50 hover:bg-white/10 transition-all flex flex-col items-center gap-1 group">
+                <span className="text-[11px] text-blue-200/80 font-bold group-hover:text-amber-300 transition-colors">بعد الفجر (ركعتان)</span>
+                <span className="text-lg font-black text-amber-300 font-mono">٢ آيات</span>
+                <span className="text-[10px] text-white/50">دقيقة ونصف فقط</span>
+              </div>
 
-              <button
-                type="button"
-                onClick={() => handleSelectGoalMode('pages')}
-                className={`px-4 py-2 rounded-lg text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
-                  goalMode === 'pages'
-                    ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 shadow-[0_0_20px_rgba(6,182,212,0.5)] scale-[1.02]'
-                    : 'text-blue-200/80 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                <Zap size={15} />
-                <span>صفحتان يومياً (مصحف المدينة) ⚡</span>
-              </button>
+              <div className="p-3 rounded-2xl bg-white/5 border border-white/10 hover:border-amber-400/50 hover:bg-white/10 transition-all flex flex-col items-center gap-1 group">
+                <span className="text-[11px] text-blue-200/80 font-bold group-hover:text-amber-300 transition-colors">بعد الظهر (٤ ركعات)</span>
+                <span className="text-lg font-black text-amber-300 font-mono">٤ آيات</span>
+                <span className="text-[10px] text-white/50">٣ دقائق فقط</span>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-white/5 border border-white/10 hover:border-amber-400/50 hover:bg-white/10 transition-all flex flex-col items-center gap-1 group">
+                <span className="text-[11px] text-blue-200/80 font-bold group-hover:text-amber-300 transition-colors">بعد العصر (٤ ركعات)</span>
+                <span className="text-lg font-black text-amber-300 font-mono">٤ آيات</span>
+                <span className="text-[10px] text-white/50">٣ دقائق فقط</span>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-white/5 border border-white/10 hover:border-amber-400/50 hover:bg-white/10 transition-all flex flex-col items-center gap-1 group">
+                <span className="text-[11px] text-blue-200/80 font-bold group-hover:text-amber-300 transition-colors">بعد المغرب (٣ ركعات)</span>
+                <span className="text-lg font-black text-amber-300 font-mono">٣ آيات</span>
+                <span className="text-[10px] text-white/50">دقيقتان فقط</span>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-white/5 border border-white/10 hover:border-amber-400/50 hover:bg-white/10 transition-all flex flex-col items-center gap-1 group col-span-2 sm:col-span-1">
+                <span className="text-[11px] text-blue-200/80 font-bold group-hover:text-amber-300 transition-colors">بعد العشاء (٤ ركعات)</span>
+                <span className="text-lg font-black text-amber-300 font-mono">٤ آيات</span>
+                <span className="text-[10px] text-white/50">٣ دقائق فقط</span>
+              </div>
             </div>
           </motion.div>
 
@@ -450,9 +449,9 @@ export default function App() {
           >
             <Link 
               to="/tafsir.html" 
-              className="button !w-auto !min-w-[250px] px-6 !h-12 !text-sm font-bold shadow-[0_0_25px_rgba(232,28,255,0.4)] whitespace-nowrap"
+              className="button !w-auto !min-w-[260px] px-6 !h-12 !text-sm font-bold shadow-[0_0_25px_rgba(232,28,255,0.4)] whitespace-nowrap"
             >
-              {goalMode === 'pages' ? 'بدء رحلة التفسير اليومية صفحتين 🚀' : 'بدء رحلة التفسير اليومية (17 آية) 🚀'}
+              بدء رحلة التفسير اليومية (17 آية) 🚀
             </Link>
             <Link to="/database.html" className="button !w-44 !h-12 !text-sm font-bold shadow-[0_0_25px_rgba(64,201,255,0.4)]">
               المعرض الشخصي 📌
@@ -481,12 +480,12 @@ export default function App() {
           <div className="w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-[310px]">
             <GlassCard
               title="Shaheen Tafsir (الماستر)"
-              badge="الرحلة الإيمانية الكبرى"
-              description="المنصة الأساسية لختم تدبر القرآن كاملاً، باختيارك: ١٧ آية يومياً أو صفحتين يومياً بحساب مصحف المدينة (أسهل وأسرع)."
+              badge="١٧ آية يومياً"
+              description="المنصة الأساسية لختم تدبر القرآن كاملاً عبر ١٧ آية يومياً، مقسمة برحمة وسلاسة بعد كل صلاة مفروضة."
               href="/tafsir.html"
               icon={BookOpen}
               isMain={true}
-              buttonText={goalMode === 'pages' ? 'بدء رحلة التفسير اليومية صفحتين' : 'بدء رحلة التفسير (17 آية)'}
+              buttonText="دخول التفسير (١٧ آية) 🚀"
               delay={0.1}
             />
 
@@ -1357,7 +1356,7 @@ export default function App() {
                 to="/tafsir.html" 
                 className="button !w-auto !min-w-[260px] px-6 !h-12 !text-sm font-bold shadow-[0_0_30px_rgba(232,28,255,0.5)] whitespace-nowrap"
               >
-                {goalMode === 'pages' ? 'بدء رحلة التفسير اليومية صفحتين 🚀' : 'بدء رحلة التفسير اليومية (17 آية) 🚀'}
+                بدء رحلة التفسير اليومية (17 آية) 🚀
               </Link>
               <Link to="/database.html" className="button !w-48 !h-12 !text-sm font-bold shadow-[0_0_30px_rgba(64,201,255,0.5)]">
                 تصفح المعرض الشخصي 📌

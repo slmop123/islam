@@ -26,8 +26,6 @@ export interface QuizData {
 export const TOTAL_QURAN_VERSES = 6236;
 export const TOTAL_MADINAH_PAGES = 604;
 export const DAILY_GOAL_VERSES = 17;
-export const DAILY_GOAL_PAGES = 2; // صفحتان يومياً بحساب مصحف المدينة
-export const VERSES_PER_TWO_PAGES_AVG = 10; // معدل الآيات في صفحتين (أسرع وأسهل)
 
 /**
  * Generates an interactive quiz question on-demand using Gemini -> Groq -> OpenRouter 
